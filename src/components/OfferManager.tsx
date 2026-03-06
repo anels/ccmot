@@ -1,27 +1,22 @@
 import React, { useState } from 'react';
 import { useStore } from '../lib/store';
 import { useSearch } from '../hooks/useSearch';
-import type { Offer, OfferCategory } from '../types';
-import { Plus, Trash2, Calendar, Info, CreditCard, Edit2, Plane, Utensils, ShoppingBag, Clapperboard, Briefcase, HelpCircle, Search, X } from 'lucide-react';
+import { ConfirmDialog } from './ConfirmDialog';
+import { Modal } from './Modal';
+import { PageHeader } from './PageHeader';
+import type { Offer } from '../types';
+import { Trash2, Calendar, Info, CreditCard, Edit2 } from 'lucide-react';
 import { format } from 'date-fns';
-import { cn } from '../lib/utils';
-
-const CATEGORIES: OfferCategory[] = ['Travel', 'Dining', 'Shopping', 'Entertainment', 'Service', 'Other'];
-
-const CATEGORY_ICONS: Record<OfferCategory, React.ElementType> = {
-    'Travel': Plane,
-    'Dining': Utensils,
-    'Shopping': ShoppingBag,
-    'Entertainment': Clapperboard,
-    'Service': Briefcase,
-    'Other': HelpCircle,
-};
+import { cn, parseOfferDate } from '../lib/utils';
+import { CATEGORIES, CATEGORY_ICONS } from '../lib/constants';
 
 const OfferManager: React.FC = () => {
-    const { offers, cards, addOffer, updateOffer, deleteOffer, trackOffer } = useStore();
+    const { offers, cards, trackedOffers, addOffer, updateOffer, deleteOffer, trackOffer } = useStore();
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
+    const [deleteId, setDeleteId] = useState<string | null>(null);
+    const [errors, setErrors] = useState<{ cards?: string }>({});
 
     const { searchTerm, setSearchTerm, filteredItems: filteredOffers } = useSearch(offers, ['merchantName', 'description', 'terms', 'category']);
 
@@ -42,6 +37,7 @@ const OfferManager: React.FC = () => {
             category: 'Shopping',
         });
         setSelectedCards(new Set());
+        setErrors({});
         setEditingId(null);
         setIsFormOpen(false);
     };
@@ -56,24 +52,36 @@ const OfferManager: React.FC = () => {
         });
         setEditingId(offer.id);
         setIsFormOpen(true);
-        setSelectedCards(new Set());
+        // Pre-select cards that are already tracking this offer
+        const existingCardIds = trackedOffers
+            .filter(t => t.offerId === offer.id)
+            .map(t => t.cardId);
+        setSelectedCards(new Set(existingCardIds));
+        setErrors({});
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Validate card selection
+        if (selectedCards.size === 0) {
+            setErrors({ cards: 'Please select at least one card to track this offer.' });
+            return;
+        }
 
         let offerId = editingId;
 
         if (editingId) {
-            updateOffer(editingId, formData);
+            await updateOffer(editingId, formData);
         } else {
-            offerId = addOffer(formData);
+            offerId = await addOffer(formData);
         }
 
         if (offerId) {
-            selectedCards.forEach(cardId => {
-                trackOffer(offerId, cardId);
-            });
+            // Sequential tracking or Promise.all
+            await Promise.all(Array.from(selectedCards).map(cardId =>
+                trackOffer(offerId!, cardId)
+            ));
         }
 
         resetForm();
@@ -89,53 +97,61 @@ const OfferManager: React.FC = () => {
         setSelectedCards(newSelected);
     };
 
+    const confirmDelete = async () => {
+        if (deleteId) {
+            await deleteOffer(deleteId);
+            setDeleteId(null);
+        }
+    };
+
     return (
         <div className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <h2 className="text-2xl font-bold">Available Offers</h2>
+            <ConfirmDialog
+                isOpen={!!deleteId}
+                onClose={() => setDeleteId(null)}
+                onConfirm={confirmDelete}
+                title="Delete Offer"
+                message="Are you sure you want to delete this offer? This will also remove it from any cards where it is being tracked."
+            />
+            <PageHeader
+                title="Available Offers"
+                searchTerm={searchTerm}
+                onSearchChange={setSearchTerm}
+                onAddClick={() => {
+                    resetForm();
+                    setIsFormOpen(true);
+                }}
+                addButtonLabel="Add Offer"
+                isFormOpen={isFormOpen}
+                searchPlaceholder="Search offers..."
+            />
 
-                <div className="flex items-center gap-3">
-                    {!isFormOpen && (
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                            <input
-                                type="text"
-                                placeholder="Search offers..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-9 pr-8 py-2 border rounded-md bg-background focus:ring-2 focus:ring-primary/50 outline-none w-full md:w-64"
-                            />
-                            {searchTerm && (
-                                <button
-                                    onClick={() => setSearchTerm('')}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                                >
-                                    <X className="w-3 h-3" />
-                                </button>
-                            )}
-                        </div>
-                    )}
-
-                    {!isFormOpen && (
+            <Modal
+                isOpen={isFormOpen}
+                onClose={() => setIsFormOpen(false)}
+                title={editingId ? 'Edit Offer' : 'Add New Offer'}
+                footer={
+                    <>
                         <button
-                            onClick={() => {
-                                resetForm();
-                                setIsFormOpen(true);
-                            }}
-                            className="flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors shadow-sm whitespace-nowrap"
+                            type="button"
+                            onClick={() => setIsFormOpen(false)}
+                            className="px-4 py-2 text-muted-foreground hover:bg-secondary rounded-md transition-colors text-sm font-medium"
                         >
-                            <Plus className="w-4 h-4 mr-2" />
-                            Add Offer
+                            Cancel
                         </button>
-                    )}
-                </div>
-            </div>
-
-            {isFormOpen && (
-                <div className="bg-card border rounded-lg p-6 shadow-md animate-in fade-in slide-in-from-top-4">
-                    <h3 className="text-lg font-semibold mb-4">{editingId ? 'Edit Offer' : 'Add New Offer'}</h3>
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <button
+                            type="submit"
+                            form="offer-form"
+                            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors shadow-sm text-sm font-medium"
+                        >
+                            {editingId ? 'Update Offer' : 'Save Offer'}
+                        </button>
+                    </>
+                }
+            >
+                <form id="offer-form" onSubmit={handleSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium mb-1">Merchant Name</label>
                                 <input
@@ -148,114 +164,142 @@ const OfferManager: React.FC = () => {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-1">Category</label>
-                                <select
-                                    className="w-full px-3 py-2 border rounded-md bg-background focus:ring-2 focus:ring-primary/50 outline-none"
-                                    value={formData.category}
-                                    onChange={(e) => setFormData({ ...formData, category: e.target.value as OfferCategory })}
-                                >
-                                    {CATEGORIES.map((cat) => (
-                                        <option key={cat} value={cat}>{cat}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div>
                                 <label className="block text-sm font-medium mb-1">Expiry Date</label>
                                 <input
                                     type="date"
                                     required
-                                    className="w-full px-3 py-2 border rounded-md bg-background focus:ring-2 focus:ring-primary/50 outline-none"
+                                    className="w-full px-3 py-2 border rounded-md bg-background focus:ring-2 focus:ring-primary/50 outline-none cursor-pointer"
                                     value={formData.expiryDate}
                                     onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
-                                />
-                            </div>
-                            <div className="md:col-span-2">
-                                <label className="block text-sm font-medium mb-1">Offer Details</label>
-                                <input
-                                    type="text"
-                                    required
-                                    placeholder="e.g. Spend $100, get $20 back"
-                                    className="w-full px-3 py-2 border rounded-md bg-background focus:ring-2 focus:ring-primary/50 outline-none"
-                                    value={formData.description}
-                                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                />
-                            </div>
-                            <div className="md:col-span-2">
-                                <label className="block text-sm font-medium mb-1">Terms & Conditions</label>
-                                <textarea
-                                    rows={3}
-                                    placeholder="e.g. Online only, expires soon..."
-                                    className="w-full px-3 py-2 border rounded-md bg-background focus:ring-2 focus:ring-primary/50 outline-none"
-                                    value={formData.terms}
-                                    onChange={(e) => setFormData({ ...formData, terms: e.target.value })}
+                                    onClick={(e) => {
+                                        try {
+                                            // Explicitly show picker on click for better UX
+                                            if ('showPicker' in e.currentTarget) {
+                                                (e.currentTarget as any).showPicker();
+                                            }
+                                        } catch (error) {
+                                            // Fallback or ignore if not supported
+                                        }
+                                    }}
                                 />
                             </div>
                         </div>
 
-                        {/* Card Selection UI */}
-                        <div className="pt-4 border-t">
-                            <label className="block text-sm font-medium mb-2">
-                                Add to Cards (Optional)
-                            </label>
-                            {cards.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">No cards available. Add cards in the Cards tab first.</p>
-                            ) : (
+                        <div>
+                            <label className="block text-sm font-medium mb-2">Category</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                {CATEGORIES.map((cat) => {
+                                    const Icon = CATEGORY_ICONS[cat];
+                                    return (
+                                        <button
+                                            key={cat}
+                                            type="button"
+                                            onClick={() => setFormData({ ...formData, category: cat })}
+                                            className={cn(
+                                                "flex flex-col items-center justify-center p-2 rounded-lg border transition-all h-16",
+                                                formData.category === cat
+                                                    ? "bg-primary/10 border-primary text-primary ring-1 ring-primary"
+                                                    : "hover:bg-secondary/50 border-transparent bg-secondary/30"
+                                            )}
+                                        >
+                                            <Icon className="w-4 h-4 mb-1" />
+                                            <span className="text-[10px] uppercase tracking-wide font-medium">{cat}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="block text-sm font-medium mb-1">Offer Details</label>
+                            <input
+                                type="text"
+                                required
+                                placeholder="e.g. Spend $100, get $20 back"
+                                className="w-full px-3 py-2 border rounded-md bg-background focus:ring-2 focus:ring-primary/50 outline-none"
+                                value={formData.description}
+                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                            />
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="block text-sm font-medium mb-1">Terms & Conditions</label>
+                            <textarea
+                                rows={3}
+                                placeholder="e.g. Online only, expires soon..."
+                                className="w-full px-3 py-2 border rounded-md bg-background focus:ring-2 focus:ring-primary/50 outline-none"
+                                value={formData.terms}
+                                onChange={(e) => setFormData({ ...formData, terms: e.target.value })}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Card Selection UI */}
+                    <div className="pt-4 border-t">
+                        <label className="block text-sm font-medium mb-2">
+                            Add to Cards <span className="text-red-500">*</span>
+                        </label>
+                        {cards.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No cards available. Add cards in the Cards tab first.</p>
+                        ) : (
+                            <div className="space-y-2">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                     {cards.map(card => (
                                         <div
                                             key={card.id}
-                                            onClick={() => toggleCardSelection(card.id)}
+                                            onClick={() => {
+                                                toggleCardSelection(card.id);
+                                                setErrors(prev => ({ ...prev, cards: undefined }));
+                                            }}
                                             className={cn(
-                                                "flex items-center p-3 border rounded-lg cursor-pointer transition-colors",
+                                                "flex items-center p-3 border rounded-lg cursor-pointer transition-all",
                                                 selectedCards.has(card.id)
-                                                    ? "bg-primary/10 border-primary"
-                                                    : "hover:bg-secondary/50"
+                                                    ? "bg-secondary border-primary ring-1 ring-primary"
+                                                    : "hover:bg-secondary/50 border-border",
+                                                errors.cards ? "border-red-300 bg-red-50 dark:bg-red-900/10" : ""
                                             )}
                                         >
-                                            <div className={cn(
-                                                "w-4 h-4 rounded border flex items-center justify-center mr-3",
-                                                selectedCards.has(card.id) ? "bg-primary border-primary" : "border-gray-400"
-                                            )}>
-                                                {selectedCards.has(card.id) && <div className="w-2 h-2 bg-white rounded-sm" />}
+                                            <div
+                                                className={cn(
+                                                    "w-8 h-8 rounded-full flex items-center justify-center mr-3 shadow-sm transition-transform",
+                                                    selectedCards.has(card.id) ? "scale-110" : "scale-100"
+                                                )}
+                                                style={{ backgroundColor: card.color || '#666' }}
+                                            >
+                                                <CreditCard className="w-4 h-4 text-white" />
                                             </div>
-                                            <div className="flex-1">
-                                                <div className="font-medium text-sm">{card.name}</div>
-                                                <div className="text-xs text-muted-foreground">
-                                                    {card.issuer} •••• {card.last4}
-                                                    {card.cardHolder && <span className="block opacity-80">{card.cardHolder}</span>}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-medium text-sm truncate">{card.name}</div>
+                                                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                                    <span>{card.issuer} •••• {card.last4}</span>
+                                                    {card.cardHolder && (
+                                                        <span className="opacity-70 truncate border-l pl-1 ml-1">
+                                                            {card.cardHolder}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
-                                            <CreditCard className="w-4 h-4 text-muted-foreground" />
+                                            {selectedCards.has(card.id) && (
+                                                <div className="w-3 h-3 rounded-full bg-primary shrink-0 ml-2" />
+                                            )}
                                         </div>
                                     ))}
                                 </div>
-                            )}
-                        </div>
+                                {errors.cards && (
+                                    <p className="text-sm text-red-500 animate-in slide-in-from-left-1">{errors.cards}</p>
+                                )}
+                            </div>
+                        )}
+                    </div>
 
-                        <div className="flex justify-end gap-2 mt-4">
-                            <button
-                                type="button"
-                                onClick={resetForm}
-                                className="px-4 py-2 border rounded-md hover:bg-muted transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors shadow-sm"
-                            >
-                                {editingId ? 'Update Offer' : 'Save Offer'}
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            )}
+
+                </form>
+            </Modal>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {filteredOffers.map((offer) => {
-                    const CategoryIcon = CATEGORY_ICONS[offer.category] || HelpCircle;
-                    const isExpired = new Date(offer.expiryDate) < new Date(new Date().setHours(0, 0, 0, 0));
+                    const CategoryIcon = CATEGORY_ICONS[offer.category] || CATEGORY_ICONS['Other'];
+                    const expiryDate = parseOfferDate(offer.expiryDate);
+                    const isValidDate = !isNaN(expiryDate.getTime());
+                    const isExpired = isValidDate && expiryDate < new Date(new Date().setHours(0, 0, 0, 0));
 
                     return (
                         <div key={offer.id} className={cn(
@@ -282,7 +326,7 @@ const OfferManager: React.FC = () => {
                                         <Edit2 className="w-4 h-4" />
                                     </button>
                                     <button
-                                        onClick={() => deleteOffer(offer.id)}
+                                        onClick={() => setDeleteId(offer.id)}
                                         className={cn(
                                             "p-1 rounded transition-colors",
                                             isExpired
@@ -305,7 +349,9 @@ const OfferManager: React.FC = () => {
 
                             <div className="flex items-center text-sm text-muted-foreground mt-2 border-t pt-2">
                                 <Calendar className="w-3 h-3 mr-1" />
-                                Expires: {format(new Date(offer.expiryDate), 'MMM d, yyyy')}
+                                Expires: {offer.expiryDate && !isNaN(parseOfferDate(offer.expiryDate).getTime())
+                                    ? format(parseOfferDate(offer.expiryDate), 'MMM d, yyyy')
+                                    : 'No date'}
                             </div>
                         </div>
                     );

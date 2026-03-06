@@ -5,7 +5,18 @@ import OfferManager from './components/OfferManager';
 import CardManager from './components/CardManager';
 import Settings from './components/Settings';
 
+import { useEffect } from 'react';
+import { useStore } from './lib/store';
+
+
+
 function App() {
+  const initialize = useStore((state) => state.initialize);
+
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+
   return (
     <Router>
       <Layout>

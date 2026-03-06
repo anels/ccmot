@@ -1,10 +1,35 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { useStore } from '../lib/store';
-import { Download, Upload, Save, AlertTriangle } from 'lucide-react';
+import { useTheme } from '../hooks/useTheme';
+import { ConfirmDialog } from './ConfirmDialog';
+import { AlertDialog } from './AlertDialog';
+import { Download, Upload, Save, AlertTriangle, Moon, Sun, Monitor } from 'lucide-react';
+
+interface PendingImport {
+    data: {
+        cards: unknown[];
+        offers: unknown[];
+        trackedOffers: unknown[];
+    };
+}
 
 const Settings: React.FC = () => {
     const { exportData, importData } = useStore();
+    const { theme, setTheme } = useTheme();
     const fileInputRef = useRef<HTMLInputElement>(null);
+    
+    // State for custom dialogs
+    const [confirmImport, setConfirmImport] = useState<PendingImport | null>(null);
+    const [alertState, setAlertState] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        variant: 'success' | 'error' | 'info';
+    }>({ isOpen: false, title: '', message: '', variant: 'info' });
+
+    const showAlert = (title: string, message: string, variant: 'success' | 'error' | 'info' = 'info') => {
+        setAlertState({ isOpen: true, title, message, variant });
+    };
 
     const handleExport = () => {
         const data = exportData();
@@ -24,22 +49,20 @@ const Settings: React.FC = () => {
         if (!file) return;
 
         const reader = new FileReader();
-        reader.onload = (event) => {
+        reader.onload = async (event) => {
             try {
                 const json = event.target?.result as string;
                 const data = JSON.parse(json);
-                // Basic validation
-                if (Array.isArray(data.cards) && Array.isArray(data.offers)) {
-                    if (window.confirm('This will overwrite your current data. Are you sure?')) {
-                        importData(data);
-                        alert('Data imported successfully!');
-                    }
+                // Validate required arrays exist
+                if (Array.isArray(data.cards) && Array.isArray(data.offers) && Array.isArray(data.trackedOffers)) {
+                    // Show confirmation dialog instead of window.confirm
+                    setConfirmImport({ data });
                 } else {
-                    alert('Invalid file format. Missing cards or offers arrays.');
+                    showAlert('Invalid File', 'Invalid file format. Missing required arrays: cards, offers, or trackedOffers.', 'error');
                 }
             } catch (err) {
                 console.error(err);
-                alert('Failed to parse JSON file.');
+                showAlert('Parse Error', 'Failed to parse JSON file. Please ensure the file is valid JSON.', 'error');
             }
         };
         reader.readAsText(file);
@@ -47,9 +70,87 @@ const Settings: React.FC = () => {
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
+    const handleConfirmImport = async () => {
+        if (confirmImport) {
+            try {
+                await importData(confirmImport.data as Parameters<typeof importData>[0]);
+                showAlert('Import Successful', 'Your data has been imported successfully.', 'success');
+            } catch (err) {
+                console.error(err);
+                showAlert('Import Failed', 'Failed to import data. Please try again.', 'error');
+            }
+            setConfirmImport(null);
+        }
+    };
+
     return (
         <div className="space-y-8">
+            {/* Custom Dialogs */}
+            <ConfirmDialog
+                isOpen={!!confirmImport}
+                onClose={() => setConfirmImport(null)}
+                onConfirm={handleConfirmImport}
+                title="Import Data"
+                message="This will overwrite your current data. Are you sure you want to continue?"
+                confirmText="Import"
+                cancelText="Cancel"
+                variant="warning"
+            />
+            <AlertDialog
+                isOpen={alertState.isOpen}
+                onClose={() => setAlertState(prev => ({ ...prev, isOpen: false }))}
+                title={alertState.title}
+                message={alertState.message}
+                variant={alertState.variant}
+            />
+
             <h2 className="text-2xl font-bold">Settings</h2>
+
+            {/* Appearance Settings */}
+            <div className="bg-card border rounded-xl p-6 shadow-sm">
+                <h3 className="text-lg font-semibold mb-4 flex items-center">
+                    <Monitor className="w-5 h-5 mr-2" />
+                    Appearance
+                </h3>
+                <p className="text-muted-foreground mb-6">
+                    Customize the look and feel of the application.
+                </p>
+
+                <div className="grid grid-cols-3 gap-4">
+                    <button
+                        onClick={() => setTheme("light")}
+                        className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${theme === 'light'
+                            ? 'border-primary bg-primary/5 text-primary'
+                            : 'border-transparent bg-secondary/50 hover:bg-secondary'
+                            }`}
+                    >
+                        <Sun className="w-6 h-6 mb-2" />
+                        <span className="font-medium">Light</span>
+                    </button>
+
+                    <button
+                        onClick={() => setTheme("dark")}
+                        className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${theme === 'dark'
+                            ? 'border-primary bg-primary/5 text-primary'
+                            : 'border-transparent bg-secondary/50 hover:bg-secondary'
+                            }`}
+                    >
+                        <Moon className="w-6 h-6 mb-2" />
+                        <span className="font-medium">Dark</span>
+                    </button>
+
+                    <button
+                        onClick={() => setTheme("system")}
+                        className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${theme === 'system'
+                            ? 'border-primary bg-primary/5 text-primary'
+                            : 'border-transparent bg-secondary/50 hover:bg-secondary'
+                            }`}
+                    >
+                        <Monitor className="w-6 h-6 mb-2" />
+                        <span className="font-medium">System</span>
+                    </button>
+                </div>
+            </div>
 
             <div className="bg-card border rounded-xl p-6 shadow-sm">
                 <h3 className="text-lg font-semibold mb-4 flex items-center">

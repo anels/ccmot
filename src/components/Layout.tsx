@@ -14,9 +14,9 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     ];
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-black text-foreground font-sans selection:bg-primary/20">
+        <div className="min-h-screen bg-background text-foreground font-sans selection:bg-primary/20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-background to-background">
             {/* Mobile Header */}
-            <div className="lg:hidden flex items-center justify-between p-4 bg-white/80 dark:bg-black/80 backdrop-blur-lg border-b sticky top-0 z-50">
+            <div className="lg:hidden flex items-center justify-between p-4 glass sticky top-0 z-50 border-b border-border/50">
                 <div className="flex items-center gap-2 font-bold text-xl">
                     <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
                         <Wallet className="w-5 h-5" />
@@ -37,7 +37,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 {/* Sidebar Navigation - Desktop */}
                 <aside className={`
                     fixed lg:sticky top-0 left-0 z-40 h-screen w-64 
-                    bg-white/80 dark:bg-black/80 backdrop-blur-xl border-r border-gray-200 dark:border-white/10
+                    glass border-r border-border/50
                     transition-transform duration-300 ease-in-out
                     ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
                 `}>
@@ -58,10 +58,10 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                     to={item.path}
                                     onClick={() => setIsMobileMenuOpen(false)}
                                     className={({ isActive }) => cn(
-                                        "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group font-medium",
+                                        "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group font-medium relative overflow-hidden",
                                         isActive
                                             ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25 translate-x-1"
-                                            : "hover:bg-gray-100 dark:hover:bg-white/5 text-muted-foreground hover:text-foreground hover:translate-x-1"
+                                            : "hover:bg-accent hover:text-accent-foreground hover:translate-x-1"
                                     )}
                                 >
                                     <item.icon className="w-5 h-5 transition-transform group-hover:scale-110" />

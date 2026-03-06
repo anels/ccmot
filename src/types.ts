@@ -1,4 +1,4 @@
-export type CardIssuer = 'Amex' | 'Chase' | 'Citi' | 'Capital One' | 'Discover' | 'Bank of America' | 'Wells Fargo' | 'US Bank' | 'Other';
+export type CardIssuer = 'Amex' | 'Chase' | 'Citi' | 'Bank of America' | 'US Bank' | 'Other';
 
 export interface CreditCard {
     id: string;
@@ -8,6 +8,7 @@ export interface CreditCard {
     color: string; // Hex code for card background
     cardHolder?: string;
     notes?: string;
+    cardTypeId?: string;
 }
 
 export interface Offer {
@@ -19,7 +20,7 @@ export interface Offer {
     category: OfferCategory;
 }
 
-export type OfferCategory = 'Travel' | 'Dining' | 'Shopping' | 'Entertainment' | 'Service' | 'Other';
+export type OfferCategory = 'Travel' | 'Dining' | 'Shopping' | 'Entertainment' | 'Service' | 'Grocery Stores' | 'Gas/EV charging' | 'TV, Internet & Streaming Services' | 'Home Utilities' | 'Other';
 
 
 export type OfferStatus = 'Added' | 'Used' | 'Awarded' | 'Expired';
@@ -36,4 +37,22 @@ export type AppData = {
     cards: CreditCard[];
     offers: Offer[];
     trackedOffers: TrackedOffer[];
+    cardTypes: CardType[];
+    rewards: Reward[];
 };
+
+export interface CardType {
+    id: string;
+    name: string;
+    issuer: CardIssuer;
+    color: string;
+}
+
+export interface Reward {
+    id: string;
+    cardTypeId: string;
+    category: OfferCategory | string; // Allow string for custom categories validation
+    rewardValue: number;
+    rewardUnit: '%' | 'x' | 'points';
+    description: string;
+}

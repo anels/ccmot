@@ -1,22 +1,35 @@
 # Technical Documentation
 
 ## Architecture Overview
-The application is built with **React**, **TypeScript**, and **Vite**, using **Zustand** for state management and **Tailwind CSS** for styling.
+The application is a **Full-Stack** solution with a decoupled Frontend and Backend.
 
-### 1. State Management (Zustand)
+- **Frontend**: **React**, **TypeScript**, **Vite**, **Zustand** (Store), **Tailwind CSS**.
+- **Backend**: **Node.js**, **Express**, **SQLite**.
+
+### 1. State Management (Zustand + API)
 Located in `src/lib/store.ts`.
-- **Store**: `useStore` manages global state for `cards`, `offers`, and `trackedOffers`.
-- **Persistence**: Uses `persist` middleware to save data to `localStorage`.
-- **Actions**: 
-    - CRUD operations for Cards and Offers.
-    - `trackOffer`: Links an offer to a card.
-    - `importData`: Robust import function with sanitization (handles missing fields like `category`, `cardHolder`).
+- **Async Store**: The store is now asynchronous. Actions (`addCard`, `updateOffer`, etc.) call the backend API first.
+- **Initialization**: `initialize()` fetches all data (`cards`, `offers`, `trackedOffers`) from `GET /api/initial-data` on app mount.
+- **Optimistic Updates**: Some actions update the UI immediately while waiting for server confirmation.
 
-### 2. Custom Hooks
-#### `useSearch` (`src/hooks/useSearch.ts`)
-A generic hook for filtering arrays based on a search term.
-- **Usage**: `const { searchTerm, setSearchTerm, filteredItems } = useSearch(items, fieldsToSearch)`;
-- **Features**: Case-insensitive, multi-field search.
+### 2. Backend API (`server/`)
+A lightweight Express server managing a SQLite database (`server/database.sqlite`).
+
+#### Endpoints
+- **Initial Data**: `GET /api/initial-data` (Bulk fetch for efficient startup).
+- **Cards**: `POST /api/cards`, `PUT /api/cards/:id`, `DELETE /api/cards/:id`.
+- **Offers**: CRUD for offers.
+- **Tracked Offers**: CRUD for tracking relationships.
+- **Logging**: Uses `morgan` for HTTP request logging and custom logs for database operations.
+- **Architecture**: Endpoints use `async/await` and `Promise` patterns for reliable data handling (refactored from callbacks).
+
+#### Database Schema
+- **`cards`**: `id`, `name`, `issuer`, `last4`, `color`, `cardHolder`, `notes`.
+- **`offers`**: `id`, `retailer`, `description`, `terms`, `category`, `expirationDate`, `url`.
+- **`tracked_offers`**: 
+    - Links `offerId` and `cardId`.
+    - `status`: 'Added' | 'Used' | 'Awarded' | 'Expired'.
+    - Foreign keys with `ON DELETE CASCADE` (conceptually, though app logic handles cleanup too).
 
 ### 3. Key Components
 - **`Dashboard.tsx`**: Main view.
@@ -26,7 +39,6 @@ A generic hook for filtering arrays based on a search term.
 - **`TrackedOfferCard.tsx`**: 
     - Compact card layout (Single line for details, smart masking).
     - Visual cues for **Expired** status (Faded, strikethrough).
-    - Auto-detects expiration based on `expiryDate`.
 - **`CatalogOfferCard.tsx`**:
     - Displays distinct offer details.
     - Allows tracking an offer to specific cards.
@@ -37,22 +49,13 @@ A generic hook for filtering arrays based on a search term.
     - Manage available offers.
     - Auto-assigns categories (e.g., 'Shopping', 'Travel').
 
-### 4. Data Models (`src/types.ts`)
-- **`CreditCard`**:
-    - `id`, `name`, `issuer`, `last4`, `color`
-    - `cardHolder` (Optional): Name on card.
-    - `notes` (Optional): User notes.
-- **`Offer`**:
-    - `id`, `merchantName`, `description`, `terms`, `expiryDate`
-    - `category`: 'Travel', 'Dining', 'Shopping', etc.
-- **`TrackedOffer`**:
-    - link between `offerId` and `cardId`.
-    - `status`: 'Added' | 'Used' | 'Awarded' | 'Expired'.
+### 4. Custom Hooks & Clients
+- **`useSearch`**: Generic search filter.
+- **`useSearch`**: Generic search filter.
+- **`api/client.ts`**: Centralized HTTP client using `fetch`. Configurable via `VITE_API_URL` (defaults to `http://localhost:3001/api`).
 
 ## Recent Improvements
-- **Robustness**: Import logic now gracefully handles legacy data files by injecting default values for missing fields.
-- **Performance**: Search logic centralized in `useSearch` to prevent code duplication.
-- **UX**:
-    - **Smart Masking**: Hidden dots if no last 4 digits.
-    - **Auto-Expiry**: Offers automatically show as 'Expired' when past date.
-    - **Compact Layout**: Optimized space on dashboard cards.
+- **Persistence**: Replaced `localStorage` with a robust **SQLite Backend**.
+- **Logging**: Added detailed backend logs for better debugging and monitoring.
+- **Concurrency**: `npm run dev:all` runs both client and server simultaneously.
+- **Robustness**: Import logic handles legacy data, though the primary source of truth is now the server.
