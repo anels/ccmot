@@ -2,90 +2,81 @@ import React, { useMemo, useState } from 'react';
 import { useStore } from '../lib/store';
 import { ConfirmDialog } from './ConfirmDialog';
 import type { OfferCategory } from '../types';
-import { Search, Gift, Download, Sparkles, ChevronDown, Check, Filter } from 'lucide-react';
+import { Search, Gift, Download, Sparkles, ChevronDown, Check, Filter, ArrowUpRight, Clock, Trophy } from 'lucide-react';
 import { useSearch } from '../hooks/useSearch';
 import { TrackedOfferCard } from './TrackedOfferCard';
 import { CatalogOfferCard } from './CatalogOfferCard';
-import { CATEGORIES, DASHBOARD_CATEGORY_ICONS } from '../lib/constants';
-import { cn, isOfferExpired, generateOffersExport } from '../lib/utils';
+import { CATEGORIES, DASHBOARD_CATEGORY_ICONS, getCategoryColor } from '../lib/constants';
+import { cn, isOfferExpired, generateOffersExport, type EnrichedTrackedOffer } from '../lib/utils';
 
-
-
+const DASHBOARD_SEARCH_FIELDS = [
+    (item: EnrichedTrackedOffer) => item.offer?.merchantName || '',
+    (item: EnrichedTrackedOffer) => item.offer?.description || '',
+    (item: EnrichedTrackedOffer) => item.card?.name || '',
+    (item: EnrichedTrackedOffer) => item.card?.issuer || ''
+];
 
 const Dashboard: React.FC = () => {
     const { offers, cards, trackedOffers, trackOffer, updateOfferStatus, deleteTrackedOffer: untrackOffer, rewards, cardTypes } = useStore();
     const [selectedCategory, setSelectedCategory] = useState<OfferCategory | 'All' | string>('All');
     const [deleteId, setDeleteId] = useState<string | null>(null);
+    const [dropdownOpen, setDropdownOpen] = useState(false);
 
-    // Categories with icons map just for dashboard usage to avoid import cycles if any (though currently ok)
     const dashedCategoryIcons = DASHBOARD_CATEGORY_ICONS;
 
-    // Dynamically aggregate all unique categories from default list + rewards + tracked offers
     const allCategories = useMemo(() => {
         const customCategories = new Set<string>();
-
+        const knownCategories = new Set<string>(CATEGORIES);
         rewards.forEach(r => {
-            if (!CATEGORIES.includes(r.category as any)) {
-                customCategories.add(r.category);
-            }
+            if (!knownCategories.has(r.category)) customCategories.add(r.category);
         });
-
-        // Check offers for custom categories
         trackedOffers.forEach(t => {
             const offer = offers.find(o => o.id === t.offerId);
             const cat = offer?.category;
-            if (cat && !CATEGORIES.includes(cat as any)) {
-                customCategories.add(cat);
-            }
+            if (cat && !knownCategories.has(cat)) customCategories.add(cat);
         });
-
         return [...CATEGORIES, ...Array.from(customCategories).sort()];
     }, [rewards, trackedOffers, offers]);
 
-    // Helper to get icon with fallback
-    const getCategoryIcon = (category: string) => {
-        return dashedCategoryIcons[category as OfferCategory] || Sparkles;
-    };
+    const getCategoryIcon = (category: string) => dashedCategoryIcons[category as OfferCategory] || Sparkles;
 
-    // Derived state: enriching tracked offers with offer and card details
     const enrichedTrackedOffers = useMemo(() => {
         return trackedOffers.map((tracked) => {
             const offer = offers.find((o) => o.id === tracked.offerId);
             const card = cards.find((c) => c.id === tracked.cardId);
             return { ...tracked, offer, card };
-        }).filter((item) => item.offer && item.card); // filter out broken links
+        }).filter((item) => item.offer && item.card);
     }, [trackedOffers, offers, cards]);
 
-    // Filter enriched tracked offers by category first AND exclude expired active offers
+    // KPI counts
+    const activeCount = useMemo(
+        () => enrichedTrackedOffers.filter(t => t.status === 'Added' && t.offer && !isOfferExpired(t.offer, t.status)).length,
+        [enrichedTrackedOffers]
+    );
+    const usedCount = useMemo(
+        () => enrichedTrackedOffers.filter(t => t.status === 'Used').length,
+        [enrichedTrackedOffers]
+    );
+    const awardedCount = useMemo(
+        () => enrichedTrackedOffers.filter(t => t.status === 'Awarded').length,
+        [enrichedTrackedOffers]
+    );
+    const cardsCount = cards.length;
+
     const categoryFilteredTrackedOffers = useMemo(() => {
         return enrichedTrackedOffers.filter(item => {
-            // Category filter
             if (selectedCategory !== 'All' && item.offer?.category !== selectedCategory) return false;
-
-            // Exclude expired active offers
             if (item.offer && isOfferExpired(item.offer, item.status)) return false;
-
             return true;
         });
     }, [selectedCategory, enrichedTrackedOffers]);
 
-    // Use unified search hook
-    const { searchTerm, setSearchTerm, filteredItems: filteredTrackedOffers } = useSearch(categoryFilteredTrackedOffers, [
-        (item) => item.offer?.merchantName || '',
-        (item) => item.offer?.description || '',
-        (item) => item.card?.name || '',
-        (item) => item.card?.issuer || ''
-    ]);
+    const { searchTerm, setSearchTerm, filteredItems: filteredTrackedOffers } = useSearch(categoryFilteredTrackedOffers, DASHBOARD_SEARCH_FIELDS);
 
     const filteredCatalogOffers = useMemo(() => {
         if (!searchTerm && selectedCategory === 'All') return [];
-
         let res = offers;
-
-        if (selectedCategory !== 'All') {
-            res = res.filter(offer => offer.category === selectedCategory);
-        }
-
+        if (selectedCategory !== 'All') res = res.filter(offer => offer.category === selectedCategory);
         if (searchTerm) {
             const term = searchTerm.toLowerCase();
             res = res.filter((offer) =>
@@ -93,10 +84,8 @@ const Dashboard: React.FC = () => {
                 offer.description.toLowerCase().includes(term)
             );
         }
-
         return res;
     }, [searchTerm, offers, selectedCategory]);
-
 
     const confirmDelete = async () => {
         if (deleteId) {
@@ -109,6 +98,8 @@ const Dashboard: React.FC = () => {
         await generateOffersExport(enrichedTrackedOffers, rewards, cardTypes);
     };
 
+    const hasAddedOffers = trackedOffers.some(o => o.status === 'Added');
+
     return (
         <div className="pb-32 space-y-8">
             <ConfirmDialog
@@ -116,238 +107,234 @@ const Dashboard: React.FC = () => {
                 onClose={() => setDeleteId(null)}
                 onConfirm={confirmDelete}
                 title="Stop Tracking Offer"
-                message="Are you sure you want to stop tracking this offer? It will be removed from your dashboard."
+                message="Stop tracking this offer? It will be removed from your dashboard."
             />
 
-            {/* Search Bar - Floating Glass Effect */}
-            <div className="sticky top-0 z-40 pt-6 pb-4 -mx-4 px-4 md:-mx-8 md:px-8 glass bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-800/50 transition-all duration-500 ease-in-out">
-                <div className="relative max-w-2xl mx-auto md:mx-0 group">
-                    <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                        <Search className="h-5 w-5 text-muted-foreground transition-colors group-focus-within:text-primary" />
-                    </div>
-                    <input
-                        type="text"
-                        placeholder="Search offers, merchants, or cards..."
-                        className="block w-full pl-12 pr-4 py-4 bg-gray-50/50 dark:bg-black/20 border border-gray-200 dark:border-gray-700/50 rounded-2xl text-lg shadow-sm hover:shadow-md focus:shadow-xl focus:ring-2 focus:ring-primary/20 focus:border-primary/50 outline-none transition-all placeholder:text-muted-foreground/60 backdrop-blur-md"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
+            {/* Page header */}
+            <header className="flex items-end justify-between gap-4 flex-wrap">
+                <div>
+                    <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">Overview</p>
+                    <h1 className="text-3xl font-semibold tracking-tight mt-1">Dashboard</h1>
                 </div>
+                <button
+                    onClick={handleExport}
+                    disabled={!hasAddedOffers}
+                    title={hasAddedOffers ? 'Export active offers as JSON' : 'No active offers to export — add one first'}
+                    className={cn(
+                        "h-9 px-3 inline-flex items-center gap-2 rounded-md text-xs font-medium uppercase tracking-wider transition-colors border",
+                        hasAddedOffers
+                            ? "bg-card border-border text-foreground hover:bg-accent"
+                            : "bg-muted border-border text-muted-foreground/60 cursor-not-allowed"
+                    )}
+                >
+                    <Download className="w-3.5 h-3.5" />
+                    Export
+                </button>
+            </header>
 
-                {/* Category Filters: View All + Dropdown */}
-                <div className="flex items-center gap-3 pt-4 pb-2">
-                    {/* 'View All' Quick Action */}
+            {/* KPI tiles - each with distinct accent */}
+            <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="stat-tile relative overflow-hidden">
+                    <span className="absolute top-0 left-0 right-0 h-0.5 bg-sky-500" aria-hidden />
+                    <span className="stat-label text-sky-700 dark:text-sky-300">Active</span>
+                    <span className="stat-value">{activeCount}</span>
+                    <span className="stat-delta text-muted-foreground">offers tracked</span>
+                </div>
+                <div className="stat-tile relative overflow-hidden">
+                    <span className="absolute top-0 left-0 right-0 h-0.5 bg-amber-500" aria-hidden />
+                    <span className="stat-label text-amber-700 dark:text-amber-300">Used</span>
+                    <span className="stat-value">{usedCount}</span>
+                    <span className="stat-delta text-muted-foreground">awaiting reward</span>
+                </div>
+                <div className="stat-tile relative overflow-hidden">
+                    <span className="absolute top-0 left-0 right-0 h-0.5 bg-emerald-500" aria-hidden />
+                    <span className="stat-label text-emerald-700 dark:text-emerald-300">Awarded</span>
+                    <span className="stat-value text-gain">{awardedCount}</span>
+                    <span className="stat-delta text-gain inline-flex items-center gap-0.5">
+                        <ArrowUpRight className="w-3 h-3" strokeWidth={2.5} /> earned
+                    </span>
+                </div>
+                <div className="stat-tile relative overflow-hidden">
+                    <span className="absolute top-0 left-0 right-0 h-0.5 bg-violet-500" aria-hidden />
+                    <span className="stat-label text-violet-700 dark:text-violet-300">Wallet</span>
+                    <span className="stat-value">{cardsCount}</span>
+                    <span className="stat-delta text-muted-foreground">{cardsCount === 1 ? 'card' : 'cards'}</span>
+                </div>
+            </section>
+
+            {/* Filter bar - top offset accounts for mobile Layout header (56px) */}
+            <section className="sticky top-14 lg:top-0 z-30 -mx-4 px-4 md:-mx-8 md:px-8 py-3 bg-background border-b border-border">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <div className="relative flex-1 min-w-[200px] max-w-md">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                        <input
+                            type="text"
+                            placeholder="Search offers, merchants, cards…"
+                            className="block w-full pl-8 pr-3 py-2 bg-card border border-border rounded-md text-sm placeholder:text-muted-foreground/70 focus:ring-2 focus:ring-ring/40 focus:border-foreground/40 outline-none transition-colors"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+
                     <button
                         onClick={() => setSelectedCategory('All')}
                         className={cn(
-                            "whitespace-nowrap px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 flex items-center gap-2 border",
+                            "h-9 px-3 inline-flex items-center gap-1.5 rounded-md text-xs font-medium uppercase tracking-wider border transition-colors",
                             selectedCategory === 'All'
-                                ? "bg-primary text-primary-foreground border-primary/50 shadow-lg shadow-primary/25"
-                                : "bg-white/40 dark:bg-gray-800/40 border-transparent hover:border-gray-200 dark:hover:border-gray-700 text-muted-foreground hover:bg-white dark:hover:bg-gray-800 hover:text-foreground hover:shadow-md glass-interactive backdrop-blur-md"
+                                ? "bg-foreground text-background border-foreground"
+                                : "bg-card border-border text-muted-foreground hover:bg-accent hover:text-foreground"
                         )}
                     >
-                        {React.createElement(DASHBOARD_CATEGORY_ICONS['All'], {
-                            className: cn("w-4 h-4", selectedCategory === 'All' ? "text-primary-foreground" : "text-muted-foreground")
-                        })}
-                        View All
+                        {React.createElement(DASHBOARD_CATEGORY_ICONS['All'], { className: "w-3 h-3" })}
+                        All
                     </button>
 
-                    {/* Category Dropdown - Custom UI */}
-                    <div className="relative flex-1 max-w-xs group/dropdown">
+                    <div className="relative">
                         <button
-                            className={cn(
-                                "w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all duration-300 outline-none",
-                                "bg-white/40 dark:bg-gray-800/40 border-transparent hover:border-gray-200 dark:hover:border-gray-700 text-muted-foreground hover:bg-white dark:hover:bg-gray-800 hover:text-foreground hover:shadow-md glass-interactive backdrop-blur-md group-focus-within/dropdown:ring-2 group-focus-within/dropdown:ring-primary/20"
-                            )}
-                            onClick={(e) => {
-                                const dropdown = e.currentTarget.nextElementSibling;
-                                dropdown?.classList.toggle('hidden');
-                                dropdown?.classList.toggle('opacity-0');
-                                dropdown?.classList.toggle('scale-95');
-                            }}
-                            onBlur={(e) => {
-                                // Delay hiding to allow click event on items to fire
-                                setTimeout(() => {
-                                    const dropdown = e.target.nextElementSibling;
-                                    dropdown?.classList.add('hidden', 'opacity-0', 'scale-95');
-                                }, 200);
-                            }}
+                            className="h-9 px-3 inline-flex items-center gap-1.5 rounded-md text-xs font-medium uppercase tracking-wider bg-card border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors outline-none"
+                            onClick={() => setDropdownOpen(o => !o)}
+                            onBlur={() => setTimeout(() => setDropdownOpen(false), 180)}
                         >
-                            <div className="flex items-center gap-2 truncate">
-                                {selectedCategory !== 'All'
-                                    ? React.createElement(getCategoryIcon(selectedCategory), { className: "w-4 h-4 text-primary shrink-0" })
-                                    : <Filter className="w-4 h-4 text-muted-foreground shrink-0" />
-                                }
-                                <span className={cn("truncate", selectedCategory === 'All' && "text-muted-foreground")}>
-                                    {selectedCategory === 'All' ? 'Select a category...' : selectedCategory}
-                                </span>
-                            </div>
-                            <ChevronDown className="w-4 h-4 text-muted-foreground opacity-50 shrink-0 ml-2" />
+                            {selectedCategory !== 'All'
+                                ? React.createElement(getCategoryIcon(selectedCategory), { className: "w-3 h-3 text-foreground" })
+                                : <Filter className="w-3 h-3" />
+                            }
+                            <span className="truncate max-w-[120px]">
+                                {selectedCategory === 'All' ? 'Category' : selectedCategory}
+                            </span>
+                            <ChevronDown className="w-3 h-3 opacity-60" />
                         </button>
 
-                        {/* Dropdown Menu */}
-                        <div className="hidden absolute top-full left-0 right-0 mt-2 p-1.5 bg-white/90 dark:bg-gray-900/95 backdrop-blur-xl border border-gray-200/50 dark:border-gray-700/50 rounded-xl shadow-xl z-50 flex-col gap-0.5 max-h-80 overflow-y-auto opacity-0 scale-95 transition-all duration-200 origin-top">
+                        {dropdownOpen && (
+                        <div className="absolute top-full left-0 mt-1 min-w-[220px] p-1 bg-popover border border-border rounded-md shadow-lg z-50 max-h-80 overflow-y-auto">
                             <button
-                                onClick={() => setSelectedCategory('All')}
+                                onClick={() => { setSelectedCategory('All'); setDropdownOpen(false); }}
                                 className={cn(
-                                    "px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-3 w-full text-left transition-colors",
-                                    selectedCategory === 'All'
-                                        ? "bg-primary/10 text-primary"
-                                        : "text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-foreground"
+                                    "px-2 py-1.5 rounded-sm text-xs font-medium flex items-center gap-2 w-full text-left transition-colors",
+                                    selectedCategory === 'All' ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"
                                 )}
                             >
-                                <div className="w-6 h-6 flex items-center justify-center rounded-md bg-background/50 border border-gray-200 dark:border-gray-700">
-                                    <Filter className="w-3.5 h-3.5" />
-                                </div>
+                                <Filter className="w-3 h-3" />
                                 <span className="flex-1">All Categories</span>
-                                {selectedCategory === 'All' && <Check className="w-4 h-4 text-primary" />}
+                                {selectedCategory === 'All' && <Check className="w-3 h-3" />}
                             </button>
-
-                            <div className="h-px bg-gray-200 dark:bg-gray-800 my-1 mx-2" />
-
-                            {allCategories.map((category) => (
-                                <button
-                                    key={category}
-                                    onClick={() => setSelectedCategory(category)}
-                                    className={cn(
-                                        "px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-3 w-full text-left transition-colors",
-                                        selectedCategory === category
-                                            ? "bg-primary/10 text-primary"
-                                            : "text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-foreground"
-                                    )}
-                                >
-                                    <div className="w-6 h-6 flex items-center justify-center rounded-md bg-background/50 border border-gray-200 dark:border-gray-700">
-                                        {React.createElement(getCategoryIcon(category), { className: "w-3.5 h-3.5" })}
-                                    </div>
-                                    <span className="flex-1 truncate">{category}</span>
-                                    {selectedCategory === category && <Check className="w-4 h-4 text-primary" />}
-                                </button>
-                            ))}
+                            <div className="h-px bg-border my-1" />
+                            {allCategories.map((category) => {
+                                const cc = getCategoryColor(category);
+                                return (
+                                    <button
+                                        key={category}
+                                        onClick={() => { setSelectedCategory(category); setDropdownOpen(false); }}
+                                        className={cn(
+                                            "px-2 py-1.5 rounded-sm text-xs font-medium flex items-center gap-2 w-full text-left transition-colors",
+                                            selectedCategory === category ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                                        )}
+                                    >
+                                        <span className={cn("dot", cc.bar)} aria-hidden />
+                                        {React.createElement(getCategoryIcon(category), { className: cn("w-3 h-3", cc.text) })}
+                                        <span className="flex-1 truncate">{category}</span>
+                                        {selectedCategory === category && <Check className="w-3 h-3" />}
+                                    </button>
+                                );
+                            })}
                         </div>
-                    </div>
-
-                    {/* Export Button - Always Visible, Disabled if no added offers */}
-                    <button
-                        onClick={handleExport}
-                        disabled={!trackedOffers.some(o => o.status === 'Added')}
-                        className={cn(
-                            "whitespace-nowrap px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all duration-300 flex items-center gap-2 ml-auto",
-                            trackedOffers.some(o => o.status === 'Added')
-                                ? "bg-white/40 dark:bg-gray-800/40 border-transparent hover:border-gray-200 dark:hover:border-gray-700 text-muted-foreground hover:bg-white dark:hover:bg-gray-800 hover:text-foreground hover:shadow-md glass-interactive backdrop-blur-md cursor-pointer"
-                                : "bg-gray-100 dark:bg-gray-800/20 border-transparent text-muted-foreground/50 cursor-not-allowed opacity-50"
                         )}
-                        title={trackedOffers.some(o => o.status === 'Added') ? "Export valid offers" : "No active offers to export"}
-                    >
-                        <Download className="w-4 h-4" />
-                        <span className="hidden sm:inline">Export</span>
-                    </button>
+                    </div>
                 </div>
-            </div>
+            </section>
 
-            {/* Main Content: Categories */}
-            <div className="space-y-12">
+            {/* Category sections */}
+            <div className="space-y-10">
                 {allCategories.filter(cat => selectedCategory === 'All' || selectedCategory === cat).map(category => {
                     const Icon = getCategoryIcon(category);
 
-                    // 1. Get Rewards for this Category (Best Cards)
-                    // Note: In a real app we might want to consolidate this logic in a hook or helper
-                    // Here we find all rewards for this category, join with cardTypes, and sort by value.
-                    // We also filter by SEARCH TERM if it exists.
                     const relevantRewards = rewards
                         .filter(r => r.category === category)
                         .map(r => {
                             const cardType = cardTypes.find(ct => ct.id === r.cardTypeId);
-                            // Find if user actually owns this card to show that specifically? 
-                            // The prompt implies "Credit Card Rewards" which usually means general knowledge, 
-                            // but context says "Best Cards for Category". 
-                            // Let's match the RewardBrowser logic: show the card type info.
                             return { ...r, cardType };
                         })
-                        .filter(r => r.cardType) // Safety check
+                        .filter(r => r.cardType)
                         .sort((a, b) => b.rewardValue - a.rewardValue);
 
-                    // 2. Get Active Offers for this Category
                     const activeOffers = categoryFilteredTrackedOffers.filter(
                         o => o.status === 'Added' && o.offer?.category === category
                     );
 
-                    // Search Filter Logic for this specific section
-                    // If search term exists, we only show this category if it has matching rewards OR offers
                     const hasMatchingContent = !searchTerm || (
                         relevantRewards.some(r =>
                             r.cardType?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                             r.description?.toLowerCase().includes(searchTerm.toLowerCase())
                         ) ||
-                        activeOffers.length > 0 // usage of useSearch hook handled filtering of activeOffers already
+                        activeOffers.length > 0
                     );
 
                     if (!hasMatchingContent && searchTerm) return null;
-
-                    // If no content effectively, maybe skip unless 'All' isn't selected (user specifically asked for this cat)
                     if (relevantRewards.length === 0 && activeOffers.length === 0 && selectedCategory === 'All') return null;
 
+                    const catColor = getCategoryColor(category);
                     return (
                         <section key={category} className="animate-slide-up scroll-mt-32" id={category}>
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="p-2.5 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 text-primary">
-                                    <Icon className="w-6 h-6" />
+                            {/* Category header */}
+                            <div className="mb-4 pb-3 border-b border-border relative">
+                                <div className={cn("absolute -bottom-px left-0 h-0.5 w-12 rounded-full", catColor.bar)} aria-hidden />
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className={cn("w-7 h-7 rounded-md flex items-center justify-center", catColor.tile)}>
+                                            <Icon className="w-3.5 h-3.5" strokeWidth={2} />
+                                        </div>
+                                        <h2 className={cn("text-base font-semibold tracking-tight", catColor.text)}>{category}</h2>
+                                        <span className={cn("text-[11px] font-mono tabular-nums px-1.5 py-0.5 rounded ring-1 ring-inset", catColor.tile, catColor.ring)}>
+                                            {activeOffers.length}
+                                        </span>
+                                    </div>
+                                    {relevantRewards.length > 0 && (
+                                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                            <Trophy className="w-3 h-3" />
+                                            <span>{relevantRewards.length} {relevantRewards.length === 1 ? 'card' : 'cards'} earn here</span>
+                                        </div>
+                                    )}
                                 </div>
-                                <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400">
-                                    {category}
-                                </h2>
                             </div>
 
-                            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-                                {/* Best Cards Column (Takes 1 col on large screens) */}
-                                <div className="xl:col-span-1 space-y-4">
-                                    <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground ml-1">Best Cards</h3>
+                            <div className="grid grid-cols-1 xl:grid-cols-4 gap-5">
+                                {/* Best cards column */}
+                                <div className="xl:col-span-1 space-y-2">
+                                    <h3 className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground mb-1.5">Best Cards</h3>
                                     {relevantRewards.length > 0 ? (
-                                        <div className="space-y-3">
+                                        <div className="space-y-1.5">
                                             {relevantRewards.map((reward, idx) => (
-                                                <div key={reward.id} className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm flex items-center justify-between group hover:shadow-md transition-all">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className={cn(
-                                                            "w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm",
-                                                            idx === 0
-                                                                ? "bg-primary/10 text-primary"
-                                                                : "bg-secondary text-muted-foreground"
-                                                        )}>
-                                                            {reward.rewardValue}{reward.rewardUnit === '%' ? '%' : 'x'}
+                                                <div key={reward.id} className="bg-card border border-border px-3 py-2 rounded-md flex items-center gap-2.5">
+                                                    <div className={cn(
+                                                        "min-w-[44px] h-9 px-1.5 rounded-sm flex items-center justify-center font-mono text-sm font-semibold tabular-nums shrink-0",
+                                                        idx === 0
+                                                            ? "bg-gain text-gain-foreground"
+                                                            : "bg-muted text-foreground"
+                                                    )}>
+                                                        {reward.rewardValue}{reward.rewardUnit === '%' ? '%' : 'x'}
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="text-xs font-medium truncate" title={reward.cardType?.name}>
+                                                            {reward.cardType?.name}
                                                         </div>
-                                                        <div className="min-w-0">
-                                                            <div className="font-medium truncate text-sm" title={reward.cardType?.name}>
-                                                                {reward.cardType?.name}
-                                                            </div>
-                                                            <div className="text-xs text-muted-foreground truncate" title={reward.description}>
-                                                                {reward.description || 'Base earn rate'}
-                                                            </div>
+                                                        <div className="text-[11px] text-muted-foreground truncate" title={reward.description}>
+                                                            {reward.description || 'Base earn rate'}
                                                         </div>
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="p-4 rounded-xl border border-dashed border-gray-200 dark:border-gray-800 text-center text-sm text-muted-foreground bg-secondary/20">
-                                            No cards configured
+                                        <div className="px-3 py-4 rounded-md border border-dashed border-border text-center text-xs text-muted-foreground bg-muted/30">
+                                            No reward rules configured
                                         </div>
                                     )}
                                 </div>
 
-                                {/* Active Offers Column (Takes 3 cols on large screens) */}
-                                <div className="xl:col-span-3 space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground ml-1">
-                                            Active Offers ({activeOffers.length})
-                                        </h3>
-                                        {category === selectedCategory && activeOffers.length > 0 && (
-                                            <button onClick={handleExport} className="text-xs text-primary hover:underline flex items-center gap-1">
-                                                <Download size={12} /> Export
-                                            </button>
-                                        )}
-                                    </div>
-
+                                {/* Active offers column */}
+                                <div className="xl:col-span-3">
                                     {activeOffers.length > 0 ? (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                                             {activeOffers.map(item => (
                                                 <TrackedOfferCard
                                                     key={item.id}
@@ -357,9 +344,9 @@ const Dashboard: React.FC = () => {
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="p-8 rounded-xl border border-dashed border-gray-200 dark:border-gray-800 text-center text-muted-foreground bg-secondary/5 flex flex-col items-center justify-center gap-2">
-                                            <Gift className="w-8 h-8 opacity-20" />
-                                            <span className="text-sm">No active offers for {category}</span>
+                                        <div className="px-6 py-10 rounded-md border border-dashed border-border text-center text-muted-foreground bg-muted/20 flex flex-col items-center justify-center gap-2">
+                                            <Gift className="w-5 h-5 opacity-40" />
+                                            <span className="text-xs">No active offers in {category}</span>
                                         </div>
                                     )}
                                 </div>
@@ -368,67 +355,61 @@ const Dashboard: React.FC = () => {
                     );
                 })}
 
-                {/* Categories Empty State (Search result empty) */}
                 {searchTerm && filteredTrackedOffers.length === 0 && (
-                    <div className="text-center py-12">
-                        <p className="text-muted-foreground">No matching categories, cards, or offers found.</p>
+                    <div className="text-center py-12 border border-dashed border-border rounded-md">
+                        <p className="text-sm text-muted-foreground">No matches for "{searchTerm}"</p>
                     </div>
                 )}
             </div>
 
-            {/* Global History Sections (Used/Awarded) - kept at bottom */}
-            <div className="space-y-12 border-t pt-12 dark:border-gray-800">
-                {/* Used Offers */}
+            {/* History */}
+            <div className="space-y-8 border-t border-border pt-8">
                 {filteredTrackedOffers.some(o => o.status === 'Used') && (
                     <section className="animate-slide-up">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="p-2 bg-amber-500/10 rounded-xl text-amber-500">
-                                <Search className="w-6 h-6 rotate-180" />
-                            </div>
-                            <h2 className="text-xl font-bold">Recently Used</h2>
+                        <div className="flex items-center gap-2 mb-4">
+                            <Clock className="w-4 h-4 text-muted-foreground" />
+                            <h2 className="text-base font-semibold tracking-tight">Awaiting Reward</h2>
+                            <span className="text-[11px] font-mono tabular-nums text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                {filteredTrackedOffers.filter(o => o.status === 'Used').length}
+                            </span>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                             {filteredTrackedOffers.filter(o => o.status === 'Used').map((item) => (
-                                <TrackedOfferCard
-                                    key={item.id}
-                                    item={item}
-                                    onUpdateStatus={updateOfferStatus}
-                                />
+                                <TrackedOfferCard key={item.id} item={item} onUpdateStatus={updateOfferStatus} />
                             ))}
                         </div>
                     </section>
                 )}
 
-                {/* Awarded Offers */}
                 {filteredTrackedOffers.some(o => o.status === 'Awarded') && (
                     <section className="animate-slide-up">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
-                                <Sparkles className="w-6 h-6" />
-                            </div>
-                            <h2 className="text-xl font-bold">Earned Rewards</h2>
+                        <div className="flex items-center gap-2 mb-4">
+                            <Trophy className="w-4 h-4 text-gain" />
+                            <h2 className="text-base font-semibold tracking-tight">Earned</h2>
+                            <span className="text-[11px] font-mono tabular-nums text-gain bg-gain-soft px-1.5 py-0.5 rounded">
+                                {filteredTrackedOffers.filter(o => o.status === 'Awarded').length}
+                            </span>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                             {filteredTrackedOffers.filter(o => o.status === 'Awarded').map((item) => (
-                                <TrackedOfferCard
-                                    key={item.id}
-                                    item={item}
-                                    onUpdateStatus={updateOfferStatus}
-                                />
+                                <TrackedOfferCard key={item.id} item={item} onUpdateStatus={updateOfferStatus} />
                             ))}
                         </div>
                     </section>
                 )}
             </div>
 
-            {/* Catalog Listing - Only show if specifically searching or filtering, to avoid clutter */}
+            {/* Catalog */}
             {(searchTerm || selectedCategory !== 'All') && filteredCatalogOffers.length > 0 && (
-                <section className="animate-slide-up pt-8 border-t dark:border-gray-800">
-                    <div className="flex items-center gap-2 mb-6 text-muted-foreground">
-                        <Gift className="w-5 h-5" />
-                        <h2 className="text-lg font-semibold">Available from Catalog</h2>
+                <section className="animate-slide-up pt-8 border-t border-border">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Gift className="w-4 h-4 text-muted-foreground" />
+                        <h2 className="text-base font-semibold tracking-tight">From Catalog</h2>
+                        <span className="text-[11px] font-mono tabular-nums text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                            {filteredCatalogOffers.length}
+                        </span>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {filteredCatalogOffers.map((offer) => (
                             <CatalogOfferCard
                                 key={offer.id}

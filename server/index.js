@@ -1,5 +1,4 @@
 const express = require('express');
-const bodyParser = require('body-parser');
 const cors = require('cors');
 const morgan = require('morgan');
 const db = require('./db');
@@ -9,7 +8,7 @@ const PORT = 3001;
 
 // Middleware
 app.use(cors());
-app.use(bodyParser.json());
+app.use(express.json());
 app.use(morgan('dev')); // Logs HTTP requests
 
 // Utility for logging with timestamp
@@ -45,6 +44,26 @@ const dbRunAsync = (sql, params = []) => {
             else resolve(this);
         });
     });
+};
+
+const withTransaction = async (operation, rollbackMessage = 'Transaction rollback failed') => {
+    let transactionStarted = false;
+    try {
+        await dbRunAsync("BEGIN IMMEDIATE TRANSACTION");
+        transactionStarted = true;
+        const result = await operation();
+        await dbRunAsync("COMMIT");
+        return result;
+    } catch (err) {
+        if (transactionStarted) {
+            try {
+                await dbRunAsync("ROLLBACK");
+            } catch (rollbackErr) {
+                logError(rollbackMessage, rollbackErr);
+            }
+        }
+        throw err;
+    }
 };
 
 // --- Cards ---
@@ -238,67 +257,95 @@ app.delete('/api/tracked-offers/:id', async (req, res) => {
 
 // --- Import ---
 
-app.post('/api/import', (req, res) => {
+const readImportArray = (body, key) => {
+    if (body[key] === undefined) return [];
+    if (!Array.isArray(body[key])) {
+        throw new Error(`${key} must be an array`);
+    }
+    return body[key];
+};
+
+app.post('/api/import', async (req, res) => {
+    let cards;
+    let offers;
+    let trackedOffers;
+    let cardTypes;
+    let rewards;
+
+    try {
+        cards = readImportArray(req.body, 'cards');
+        offers = readImportArray(req.body, 'offers');
+        trackedOffers = readImportArray(req.body, 'trackedOffers');
+        cardTypes = readImportArray(req.body, 'cardTypes');
+        rewards = readImportArray(req.body, 'rewards');
+    } catch (err) {
+        return res.status(400).json({ error: err.message });
+    }
+
     log('Starting data import...', {
-        cards: req.body.cards?.length || 0,
-        offers: req.body.offers?.length || 0,
-        trackedOffers: req.body.trackedOffers?.length || 0
+        cards: cards.length,
+        offers: offers.length,
+        trackedOffers: trackedOffers.length,
+        cardTypes: cardTypes.length,
+        rewards: rewards.length
     });
 
-    const { cards, offers, trackedOffers } = req.body;
+    try {
+        await withTransaction(async () => {
+            // Clear dependent tables before parent tables so foreign keys stay valid.
+            await dbRunAsync("DELETE FROM tracked_offers");
+            await dbRunAsync("DELETE FROM rewards");
+            await dbRunAsync("DELETE FROM cards");
+            await dbRunAsync("DELETE FROM offers");
+            await dbRunAsync("DELETE FROM card_types");
 
-    db.serialize(() => {
-        db.run("BEGIN TRANSACTION");
-
-        try {
-            // Clear existing data
-            db.run("DELETE FROM tracked_offers");
-            db.run("DELETE FROM offers");
-            db.run("DELETE FROM cards");
-
-            // Insert Cards
-            if (cards && Array.isArray(cards)) {
-                const stmt = db.prepare("INSERT INTO cards (id, name, issuer, last4, color, cardHolder, notes) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                cards.forEach(card => {
-                    stmt.run(card.id, card.name, card.issuer, card.last4, card.color, card.cardHolder || '', card.notes || '');
-                });
-                stmt.finalize();
+            for (const cardType of cardTypes) {
+                await dbRunAsync(
+                    "INSERT INTO card_types (id, name, issuer, color) VALUES (?, ?, ?, ?)",
+                    [cardType.id, cardType.name, cardType.issuer, cardType.color]
+                );
             }
 
-            // Insert Offers
-            if (offers && Array.isArray(offers)) {
-                const stmt = db.prepare("INSERT INTO offers (id, merchantName, description, terms, category, expiryDate, url) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                offers.forEach(offer => {
-                    stmt.run(offer.id, offer.merchantName, offer.description, offer.terms, offer.category, offer.expiryDate, offer.url);
-                });
-                stmt.finalize();
+            for (const card of cards) {
+                const cardTypeId = card.card_type_id ?? card.cardTypeId ?? null;
+                await dbRunAsync(
+                    "INSERT INTO cards (id, name, issuer, last4, color, cardHolder, notes, card_type_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    [card.id, card.name, card.issuer, card.last4, card.color, card.cardHolder || '', card.notes || '', cardTypeId]
+                );
             }
 
-            // Insert Tracked Offers
-            if (trackedOffers && Array.isArray(trackedOffers)) {
-                const stmt = db.prepare("INSERT INTO tracked_offers (id, offerId, cardId, status, dateAdded) VALUES (?, ?, ?, ?, ?)");
-                trackedOffers.forEach(to => {
-                    stmt.run(to.id, to.offerId, to.cardId, to.status, to.dateAdded);
-                });
-                stmt.finalize();
+            for (const offer of offers) {
+                await dbRunAsync(
+                    "INSERT INTO offers (id, merchantName, description, terms, category, expiryDate, url) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [offer.id, offer.merchantName, offer.description, offer.terms, offer.category, offer.expiryDate, offer.url]
+                );
             }
 
-            db.run("COMMIT", (err) => {
-                if (err) {
-                    logError('Import commit failed', err);
-                    res.status(500).json({ error: err.message });
-                } else {
-                    log('Data import completed successfully.');
-                    res.json({ message: "Import successful" });
-                }
-            });
+            for (const trackedOffer of trackedOffers) {
+                await dbRunAsync(
+                    "INSERT INTO tracked_offers (id, offerId, cardId, status, dateAdded) VALUES (?, ?, ?, ?, ?)",
+                    [trackedOffer.id, trackedOffer.offerId, trackedOffer.cardId, trackedOffer.status, trackedOffer.dateAdded]
+                );
+            }
 
-        } catch (err) {
-            db.run("ROLLBACK");
-            logError('Import failed, rolling back', err);
-            res.status(500).json({ error: err.message });
-        }
-    });
+            for (const reward of rewards) {
+                const cardTypeId = reward.card_type_id ?? reward.cardTypeId;
+                const rewardValue = reward.reward_value ?? reward.rewardValue;
+                const rewardUnit = reward.reward_unit ?? reward.rewardUnit;
+                await dbRunAsync(
+                    "INSERT INTO rewards (id, cardTypeId, category, rewardValue, rewardUnit, description) VALUES (?, ?, ?, ?, ?, ?)",
+                    [reward.id, cardTypeId, reward.category, rewardValue, rewardUnit, reward.description || '']
+                );
+            }
+        }, 'Import rollback failed');
+
+        log('Data import completed successfully.');
+        res.json({ message: "Import successful" });
+    } catch (err) {
+        logError('Import failed, rolling back', err);
+        const status = err.code === 'SQLITE_CONSTRAINT' ? 400 : 500;
+        res.status(status).json({ error: err.message });
+    }
 });
 
 // --- Card Types ---
@@ -355,7 +402,12 @@ app.put('/api/card-types/:id', async (req, res) => {
 app.delete('/api/card-types/:id', async (req, res) => {
     log(`Deleting card type ${req.params.id}...`);
     try {
-        const result = await dbRunAsync(`DELETE FROM card_types WHERE id = ?`, req.params.id);
+        const result = await withTransaction(async () => {
+            await dbRunAsync(`UPDATE cards SET card_type_id = NULL WHERE card_type_id = ?`, [req.params.id]);
+            await dbRunAsync(`DELETE FROM rewards WHERE cardTypeId = ?`, [req.params.id]);
+            return dbRunAsync(`DELETE FROM card_types WHERE id = ?`, [req.params.id]);
+        }, `Deleting card type ${req.params.id} rollback failed`);
+
         log(`Card type ${req.params.id} deleted successfully`);
         res.json({ message: "deleted", changes: result.changes });
     } catch (err) {

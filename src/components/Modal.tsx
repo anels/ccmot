@@ -2,6 +2,26 @@ import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '../lib/utils';
 
+// Module-level counter so stacked modals don't restore body scroll while one is still open.
+let openModalCount = 0;
+let savedBodyOverflow: string | null = null;
+
+function acquireScrollLock() {
+    if (openModalCount === 0) {
+        savedBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+    }
+    openModalCount += 1;
+}
+
+function releaseScrollLock() {
+    openModalCount = Math.max(0, openModalCount - 1);
+    if (openModalCount === 0) {
+        document.body.style.overflow = savedBodyOverflow ?? '';
+        savedBodyOverflow = null;
+    }
+}
+
 interface ModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -21,48 +41,51 @@ export const Modal: React.FC<ModalProps> = ({
     headerActions,
     footer
 }) => {
-    // Prevent scrolling when modal is open
     useEffect(() => {
-        if (isOpen) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = 'unset';
-        }
-        return () => {
-            document.body.style.overflow = 'unset';
+        if (!isOpen) return;
+        acquireScrollLock();
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
         };
-    }, [isOpen]);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('keydown', onKey);
+            releaseScrollLock();
+        };
+    }, [isOpen, onClose]);
 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            {/* Overlay click to close */}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 animate-in fade-in duration-100">
             <div className="absolute inset-0" onClick={onClose} />
 
             <div className={cn(
-                "bg-background rounded-2xl shadow-2xl border w-full max-w-2xl max-h-[90vh] flex flex-col relative z-10 animate-in zoom-in-95 duration-200",
+                "bg-card rounded-lg border border-border shadow-2xl shadow-foreground/10",
+                "w-full max-w-2xl max-h-[90vh] flex flex-col relative z-10",
+                "animate-in zoom-in-95 duration-100",
                 className
             )}>
-                <div className="flex items-center justify-between p-6 border-b shrink-0">
-                    <h3 className="text-xl font-bold tracking-tight">{title}</h3>
-                    <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+                    <h3 className="text-base font-semibold tracking-tight">{title}</h3>
+                    <div className="flex items-center gap-1">
                         {headerActions}
                         <button
                             onClick={onClose}
-                            className="p-2 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground transition-all"
+                            className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                            aria-label="Close"
                         >
-                            <X className="w-5 h-5" />
+                            <X className="w-4 h-4" />
                         </button>
                     </div>
                 </div>
 
-                <div className="p-6 overflow-y-auto custom-scrollbar flex-1 min-h-0">
+                <div className="p-5 overflow-y-auto flex-1 min-h-0">
                     {children}
                 </div>
 
                 {footer && (
-                    <div className="p-4 border-t bg-muted/10 flex items-center justify-end gap-3 shrink-0 rounded-b-2xl">
+                    <div className="px-5 py-3 border-t border-border bg-muted/30 flex items-center justify-end gap-2 shrink-0 rounded-b-lg">
                         {footer}
                     </div>
                 )}

@@ -6,6 +6,22 @@ export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))
 }
 
+/**
+ * Pick readable text color for an arbitrary hex background.
+ * Uses YIQ luminance — threshold tuned so e.g. yellow (#FFEB3B) returns black.
+ */
+export function getReadableTextColor(hexColor: string | undefined): '#FFFFFF' | '#0A0A0A' {
+    if (!hexColor) return '#FFFFFF';
+    const hex = hexColor.replace('#', '').trim();
+    if (hex.length !== 6) return '#FFFFFF';
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    if ([r, g, b].some(n => Number.isNaN(n))) return '#FFFFFF';
+    const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+    return yiq >= 160 ? '#0A0A0A' : '#FFFFFF';
+}
+
 export function parseOfferDate(dateStr: string): Date {
     if (!dateStr) return new Date(NaN);
     // Parse YYYY-MM-DD manually to avoid UTC conversion
@@ -30,6 +46,27 @@ export function isOfferExpired(offer: Offer, status?: OfferStatus): boolean {
 }
 
 export type EnrichedTrackedOffer = TrackedOffer & { offer?: Offer; card?: CreditCard };
+
+type SaveFilePickerOptions = {
+    suggestedName?: string;
+    types?: {
+        description: string;
+        accept: Record<string, string[]>;
+    }[];
+};
+
+type WritableFileHandle = {
+    write: (data: string) => Promise<void> | void;
+    close: () => Promise<void> | void;
+};
+
+type FilePickerHandle = {
+    createWritable: () => Promise<WritableFileHandle>;
+};
+
+type WindowWithFilePicker = Window & {
+    showSaveFilePicker?: (options: SaveFilePickerOptions) => Promise<FilePickerHandle>;
+};
 
 export async function generateOffersExport(
     trackedOffers: EnrichedTrackedOffer[],
@@ -75,8 +112,9 @@ export async function generateOffersExport(
 
     // Try File System Access API first
     try {
-        if ('showSaveFilePicker' in window) {
-            const handle = await (window as any).showSaveFilePicker({
+        const saveFilePicker = (window as WindowWithFilePicker).showSaveFilePicker;
+        if (saveFilePicker) {
+            const handle = await saveFilePicker({
                 suggestedName: 'my_wallet_data.json',
                 types: [{
                     description: 'JSON Files',
@@ -88,8 +126,8 @@ export async function generateOffersExport(
             await writable.close();
             return;
         }
-    } catch (err: any) {
-        if (err.name === 'AbortError') return; // User cancelled
+    } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') return; // User cancelled
         console.warn('File System Access API failed, falling back to download', err);
     }
 

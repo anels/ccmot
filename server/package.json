@@ -1,14 +1,23 @@
 {
-  "name": "server",
+  "name": "ccmot-server",
   "version": "1.0.0",
-  "description": "",
+  "description": "Local API server for CCMOT.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "anels",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anels/ccmot.git",
+    "directory": "server"
+  },
+  "bugs": {
+    "url": "https://github.com/anels/ccmot/issues"
+  },
+  "homepage": "https://github.com/anels/ccmot#readme",
   "type": "commonjs",
   "dependencies": {
     "morgan": "^1.10.1"

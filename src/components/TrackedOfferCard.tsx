@@ -1,9 +1,9 @@
 import React from 'react';
-import { CreditCard, RotateCcw, Clock } from 'lucide-react';
-import { format, isValid } from 'date-fns';
+import { RotateCcw, ArrowRight } from 'lucide-react';
+import { format, isValid, differenceInDays } from 'date-fns';
 import type { Offer, CreditCard as CreditCardType, TrackedOffer, OfferStatus } from '../types';
 import { cn, isOfferExpired, parseOfferDate } from '../lib/utils';
-import { CATEGORY_ICONS, STATUS_COLORS, NEXT_STATUS } from '../lib/constants';
+import { CATEGORY_ICONS, STATUS_COLORS, STATUS_DOT, NEXT_STATUS, getCategoryColor } from '../lib/constants';
 
 interface TrackedOfferCardProps {
     item: TrackedOffer & { offer?: Offer; card?: CreditCardType };
@@ -13,98 +13,115 @@ interface TrackedOfferCardProps {
 export const TrackedOfferCard: React.FC<TrackedOfferCardProps> = ({ item, onUpdateStatus }) => {
     if (!item.offer || !item.card) return null;
 
-    const CategoryIcon = CATEGORY_ICONS[item.offer.category || 'Other'];
-
+    const CategoryIcon = CATEGORY_ICONS[item.offer.category] || CATEGORY_ICONS['Other'];
+    const catColor = getCategoryColor(item.offer.category || 'Other');
+    const isDateExpired = isOfferExpired(item.offer);
     const isExpired = isOfferExpired(item.offer, item.status);
     const displayStatus: OfferStatus = isExpired ? 'Expired' : item.status;
+    const expiryDate = parseOfferDate(item.offer.expiryDate);
+    const validDate = isValid(expiryDate);
+    const daysLeft = validDate ? differenceInDays(expiryDate, new Date()) : null;
+    const expirySoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 7;
 
     return (
         <div className={cn(
-            "group relative flex flex-col glass-card rounded-2xl p-6 transition-all duration-500",
-            !isExpired && "hover:shadow-2xl hover:shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 bg-gradient-to-br from-white/80 to-white/40 dark:from-gray-900/80 dark:to-gray-900/40",
-            isExpired && "opacity-60 grayscale hover:opacity-100 hover:grayscale-0 bg-gray-100/50 dark:bg-gray-900/20"
+            "group relative flex bg-card rounded-lg border border-border overflow-hidden transition-colors",
+            !isExpired && "hover:border-foreground/30",
+            isExpired && "opacity-60"
         )}>
-            {/* Header: Icon & Merchant */}
-            <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                    <div className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
-                        isExpired ? "bg-gray-100 text-gray-400 dark:bg-gray-800" : "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground"
-                    )}>
-                        <CategoryIcon className="w-5 h-5" />
-                    </div>
-                    <div>
-                        <h3 className={cn("font-bold text-lg leading-tight text-foreground", isExpired && "line-through decoration-destructive/30")}>
-                            {item.offer.merchantName}
-                        </h3>
-                        <div className={cn("text-xs font-semibold px-2 py-0.5 rounded-full inline-block mt-1",
-                            isExpired ? "bg-gray-100 text-gray-500" : "bg-secondary text-secondary-foreground"
+            {/* Category color bar */}
+            <div
+                className={cn("w-1 shrink-0", isExpired ? "bg-zinc-300 dark:bg-zinc-700" : catColor.bar)}
+                aria-hidden
+            />
+
+            <div className="flex-1 min-w-0 p-4">
+                {/* Top row: icon tile + merchant + status */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                        <div className={cn(
+                            "w-8 h-8 rounded-md flex items-center justify-center shrink-0",
+                            isExpired ? "bg-muted text-muted-foreground" : catColor.tile
                         )}>
-                            {item.offer.category}
+                            <CategoryIcon className="w-4 h-4" strokeWidth={2} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <h3 className={cn(
+                                "text-sm font-semibold leading-tight truncate",
+                                isExpired && "line-through decoration-muted-foreground/40"
+                            )}>
+                                {item.offer.merchantName}
+                            </h3>
+                            <div className={cn("text-[11px] font-medium mt-0.5 truncate", isExpired ? "text-muted-foreground" : catColor.text)}>
+                                {item.offer.category}
+                            </div>
                         </div>
                     </div>
-                </div>
-            </div>
-
-            {/* Description */}
-            <p className="text-sm text-muted-foreground font-medium line-clamp-2 mb-5 min-h-[2.5rem]">
-                {item.offer.description}
-            </p>
-
-            {/* Card Info */}
-            <div className="flex items-center gap-3 mb-5 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 group-hover:border-primary/10 transition-colors">
-                <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center shadow-sm text-white shrink-0"
-                    style={{ backgroundColor: item.card.color }}
-                >
-                    <CreditCard className="w-4 h-4 opacity-90" />
-                </div>
-                <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold truncate text-foreground/90">{item.card.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                        {item.card.issuer} &bull; {item.card.last4}
-                    </p>
-                </div>
-            </div>
-
-            {/* Footer: Expiry & Actions */}
-            <div className="mt-auto flex items-center justify-between pt-4 border-t border-dashed border-gray-200 dark:border-gray-800">
-                <div className={cn("flex items-center text-xs font-medium",
-                    isOfferExpired(item.offer) ? "text-destructive" : "text-muted-foreground"
-                )}>
-                    <Clock className="w-3.5 h-3.5 mr-1.5" />
-                    {isValid(parseOfferDate(item.offer.expiryDate))
-                        ? (isOfferExpired(item.offer) ? 'Expired ' : 'Expires ') + format(parseOfferDate(item.offer.expiryDate), 'MMM d')
-                        : 'Invalid Date'}
-                </div>
-
-                <div className="flex items-center gap-2">
-                    <div className={cn(
-                        "px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider ring-1 ring-inset shadow-sm flex items-center gap-1.5",
+                    <span className={cn(
+                        "px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider ring-1 ring-inset flex items-center gap-1 shrink-0",
                         STATUS_COLORS[displayStatus]
                     )}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                        <span className={cn("dot", STATUS_DOT[displayStatus])} />
                         {displayStatus}
+                    </span>
+                </div>
+
+                {/* Description */}
+                <p className="text-sm text-foreground/80 line-clamp-2 mb-3 min-h-[2.5rem] leading-snug">
+                    {item.offer.description}
+                </p>
+
+                {/* Card meta row */}
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
+                    <span
+                        className="w-2.5 h-2.5 rounded-sm shrink-0 ring-1 ring-border"
+                        style={{ backgroundColor: item.card.color }}
+                        aria-hidden
+                    />
+                    <span className="font-medium text-foreground/90 truncate">{item.card.name}</span>
+                    <span className="text-muted-foreground/50 font-mono">·</span>
+                    <span className="font-mono">•••• {item.card.last4}</span>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between pt-3 border-t border-border">
+                    <div className={cn(
+                        "text-[11px] font-mono tabular-nums",
+                        isDateExpired ? "text-destructive" : expirySoon ? "text-warning" : "text-muted-foreground"
+                    )}>
+                        {validDate
+                            ? <>
+                                <span className="opacity-60 uppercase tracking-wider mr-1">{isDateExpired ? 'Expired' : 'Exp'}</span>
+                                {format(expiryDate, 'MMM dd, yyyy')}
+                                {daysLeft !== null && !isDateExpired && (
+                                    <span className="ml-1.5 opacity-70">({daysLeft}d)</span>
+                                )}
+                              </>
+                            : 'Invalid date'}
                     </div>
 
-                    {!isExpired && (displayStatus === 'Added' || displayStatus === 'Used') && (
-                        <button
-                            onClick={() => onUpdateStatus(item.id, NEXT_STATUS[displayStatus])}
-                            className="group/btn relative w-9 h-9 flex items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 hover:shadow-primary/40 hover:scale-105 active:scale-95 transition-all overflow-hidden"
-                            title={`Mark as ${NEXT_STATUS[displayStatus]}`}
-                        >
-                            <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/20 to-white/0 translate-x-[-150%] group-hover/btn:translate-x-[150%] transition-transform duration-700 ease-in-out"></div>
-                            <span className="text-lg leading-none mb-0.5 group-hover/btn:translate-x-0.5 transition-transform">&rarr;</span>
-                        </button>
-                    )}
-                    {!isExpired && displayStatus !== 'Added' && (
-                        <button
-                            onClick={() => onUpdateStatus(item.id, 'Added')}
-                            className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700 transition-all"
-                            title="Reset to Added"
-                        >
-                            <RotateCcw className="w-4 h-4" />
-                        </button>
+                    {!isExpired && (
+                        <div className="flex items-center gap-1">
+                            {(displayStatus === 'Added' || displayStatus === 'Used') && (
+                                <button
+                                    onClick={() => onUpdateStatus(item.id, NEXT_STATUS[displayStatus])}
+                                    className="h-7 px-2 inline-flex items-center gap-1 rounded-md bg-foreground text-background hover:bg-foreground/85 transition-colors text-[11px] font-medium uppercase tracking-wider"
+                                    title={`Mark as ${NEXT_STATUS[displayStatus]}`}
+                                >
+                                    {NEXT_STATUS[displayStatus]}
+                                    <ArrowRight className="w-3 h-3" strokeWidth={2.5} />
+                                </button>
+                            )}
+                            {displayStatus !== 'Added' && (
+                                <button
+                                    onClick={() => onUpdateStatus(item.id, 'Added')}
+                                    className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+                                    title="Reset"
+                                >
+                                    <RotateCcw className="w-3 h-3" />
+                                </button>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>

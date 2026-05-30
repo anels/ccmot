@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Calendar, CheckCircle, Plus, ChevronDown } from 'lucide-react';
+import { CheckCircle2, Plus, ChevronDown } from 'lucide-react';
 import type { Offer, CreditCard as CreditCardType, TrackedOffer } from '../types';
 import { format, isValid } from 'date-fns';
-import { CATEGORY_ICONS } from '../lib/constants';
+import { CATEGORY_ICONS, getCategoryColor } from '../lib/constants';
+import { cn, parseOfferDate } from '../lib/utils';
 
 interface CatalogOfferCardProps {
     offer: Offer;
@@ -13,7 +14,8 @@ interface CatalogOfferCardProps {
 
 export const CatalogOfferCard: React.FC<CatalogOfferCardProps> = ({ offer, cards, trackedOffers, onTrackOffer }) => {
     const [selectedCardId, setSelectedCardId] = useState<string>('');
-    const CategoryIcon = CATEGORY_ICONS[offer.category || 'Other'];
+    const CategoryIcon = CATEGORY_ICONS[offer.category] || CATEGORY_ICONS['Other'];
+    const catColor = getCategoryColor(offer.category || 'Other');
 
     const alreadyTrackedCards = trackedOffers
         .filter(t => t.offerId === offer.id)
@@ -24,74 +26,78 @@ export const CatalogOfferCard: React.FC<CatalogOfferCardProps> = ({ offer, cards
     const handleTrack = () => {
         if (selectedCardId) {
             onTrackOffer(offer.id, selectedCardId);
-            setSelectedCardId(''); // Reset selection
+            setSelectedCardId('');
         }
     };
 
+    const expiryDate = parseOfferDate(offer.expiryDate);
+    const expiryValid = isValid(expiryDate);
+
     return (
-        <div className="group flex flex-col glass-card rounded-2xl p-6 transition-all duration-500 hover:shadow-2xl hover:shadow-primary/5 hover:border-primary/20 bg-gradient-to-br from-white/60 to-white/30 dark:from-gray-900/60 dark:to-gray-900/30 backdrop-blur-md">
+        <div className="flex flex-col bg-card rounded-lg border border-border overflow-hidden transition-colors hover:border-foreground/30">
+            {/* Top accent bar */}
+            <div className={cn("h-1 w-full", catColor.bar)} aria-hidden />
+
+            <div className="p-4 flex flex-col flex-1">
             {/* Header */}
-            <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-white dark:bg-gray-800 rounded-xl shadow-sm text-foreground/80 group-hover:scale-110 transition-transform duration-300">
-                        <CategoryIcon className="w-5 h-5" />
+            <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                    <div className={cn("w-8 h-8 rounded-md flex items-center justify-center shrink-0", catColor.tile)}>
+                        <CategoryIcon className="w-4 h-4" strokeWidth={2} />
                     </div>
-                    <div>
-                        <h3 className="font-bold text-lg leading-tight text-foreground group-hover:text-primary transition-colors">
-                            {offer.merchantName}
-                        </h3>
-                        <span className="text-[10px] font-bold uppercase tracking-wider bg-secondary/80 text-secondary-foreground px-2 py-0.5 rounded-md mt-1 inline-block">
+                    <div className="min-w-0 flex-1">
+                        <h3 className="text-sm font-semibold leading-tight truncate">{offer.merchantName}</h3>
+                        <div className={cn("text-[11px] font-medium mt-0.5 truncate", catColor.text)}>
                             {offer.category || 'Other'}
-                        </span>
+                        </div>
                     </div>
                 </div>
+                <span className="font-mono text-[11px] tabular-nums text-muted-foreground shrink-0" title="Expires">
+                    <span className="opacity-60 uppercase tracking-wider mr-1">Exp</span>
+                    {expiryValid ? format(expiryDate, 'MMM dd') : '—'}
+                </span>
             </div>
 
             {/* Description */}
-            <p className="text-sm text-muted-foreground font-medium mb-6 line-clamp-3 min-h-[3rem] leading-relaxed">
+            <p className="text-sm text-foreground/80 mb-4 line-clamp-3 min-h-[3rem] leading-snug">
                 {offer.description}
             </p>
 
             {/* Footer */}
-            <div className="mt-auto pt-4 border-t border-dashed border-gray-200 dark:border-gray-800/50 space-y-4">
-                <div className="flex items-center text-xs text-muted-foreground font-medium">
-                    <Calendar className="w-3.5 h-3.5 mr-1.5" />
-                    Expires {isValid(new Date(offer.expiryDate)) ? format(new Date(offer.expiryDate), 'MMM d') : 'N/A'}
-                </div>
-
+            <div className="mt-auto pt-3 border-t border-border">
                 {availableCards.length > 0 ? (
-                    <div className="flex gap-2">
-                        <div className="relative flex-1 group/select">
+                    <div className="flex gap-1.5">
+                        <div className="relative flex-1">
                             <select
-                                className="w-full appearance-none text-sm font-medium border border-gray-200 dark:border-gray-700/50 rounded-xl px-3 py-2.5 bg-gray-50/50 dark:bg-black/20 hover:bg-white dark:hover:bg-gray-800/50 focus:ring-2 focus:ring-primary/20 focus:border-primary/50 outline-none cursor-pointer transition-all pr-8 text-foreground"
+                                className="w-full appearance-none text-xs font-medium border border-border bg-card rounded-md px-2.5 py-2 pr-7 focus:ring-2 focus:ring-ring/40 focus:border-foreground/40 outline-none cursor-pointer transition-colors"
                                 value={selectedCardId}
                                 onChange={(e) => setSelectedCardId(e.target.value)}
                             >
-                                <option value="">Select Card to track...</option>
+                                <option value="">Add to card…</option>
                                 {availableCards.map(c => (
-                                    <option key={c.id} value={c.id}>{c.name} (•••• {c.last4})</option>
+                                    <option key={c.id} value={c.id}>{c.name} • •••• {c.last4}</option>
                                 ))}
                             </select>
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground group-hover/select:text-primary transition-colors">
-                                <ChevronDown className="w-4 h-4" />
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
+                                <ChevronDown className="w-3 h-3" />
                             </div>
                         </div>
                         <button
                             disabled={!selectedCardId}
                             onClick={handleTrack}
-                            className="group/btn relative overflow-hidden p-2.5 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all shadow-lg shadow-primary/20"
-                            title="Add Offer"
+                            className="px-2.5 bg-foreground text-background rounded-md hover:bg-foreground/85 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                            title="Track offer"
                         >
-                            <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/20 to-white/0 translate-x-[-150%] group-hover/btn:translate-x-[150%] transition-transform duration-700 ease-in-out"></div>
-                            <Plus className="w-5 h-5 relative z-10" />
+                            <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
                         </button>
                     </div>
                 ) : (
-                    <div className="flex items-center justify-center gap-2 p-3 bg-emerald-50/50 dark:bg-emerald-900/10 text-emerald-600 dark:text-emerald-400 rounded-xl border border-emerald-100 dark:border-emerald-900/20">
-                        <CheckCircle className="w-4 h-4" />
-                        <span className="text-sm font-bold">All cards added</span>
+                    <div className="flex items-center justify-center gap-1.5 px-2.5 py-2 bg-gain-soft text-gain rounded-md text-xs font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={2.5} />
+                        <span>All cards added</span>
                     </div>
                 )}
+            </div>
             </div>
         </div>
     );

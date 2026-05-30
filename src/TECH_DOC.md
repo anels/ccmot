@@ -24,12 +24,14 @@ A lightweight Express server managing a SQLite database (`server/database.sqlite
 - **Architecture**: Endpoints use `async/await` and `Promise` patterns for reliable data handling (refactored from callbacks).
 
 #### Database Schema
-- **`cards`**: `id`, `name`, `issuer`, `last4`, `color`, `cardHolder`, `notes`.
-- **`offers`**: `id`, `retailer`, `description`, `terms`, `category`, `expirationDate`, `url`.
-- **`tracked_offers`**: 
+- **`cards`**: `id`, `name`, `issuer`, `last4`, `color`, `cardHolder`, `notes`, `card_type_id`.
+- **`offers`**: `id`, `merchantName`, `description`, `terms`, `category`, `expiryDate`, `url`.
+- **`tracked_offers`**:
     - Links `offerId` and `cardId`.
     - `status`: 'Added' | 'Used' | 'Awarded' | 'Expired'.
-    - Foreign keys with `ON DELETE CASCADE` (conceptually, though app logic handles cleanup too).
+- **`card_types`**: `id`, `name`, `issuer`, `color`.
+- **`rewards`**: `id`, `cardTypeId`, `category`, `rewardValue`, `rewardUnit`, `description`.
+- SQLite foreign keys are enabled on connection; tracked offers cascade when cards/offers are deleted.
 
 ### 3. Key Components
 - **`Dashboard.tsx`**: Main view.

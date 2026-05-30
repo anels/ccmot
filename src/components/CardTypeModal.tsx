@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Modal } from './Modal';
 import { ISSUERS, ISSUER_COLORS } from '../lib/constants';
 import type { CardIssuer, CardType } from '../types';
@@ -20,29 +20,34 @@ export const CardTypeModal: React.FC<CardTypeModalProps> = ({
     initialData,
     title = "Card Type"
 }) => {
-    const [name, setName] = useState('');
-    const [issuer, setIssuer] = useState<CardIssuer>('Amex');
-    const [color, setColor] = useState(ISSUER_COLORS['Amex']);
+    return (
+        <Modal
+            isOpen={isOpen}
+            onClose={onClose}
+            title={title}
+            className="max-w-xl"
+        >
+            <CardTypeForm
+                key={initialData?.id ?? 'new'}
+                initialData={initialData}
+                onClose={onClose}
+                onSave={onSave}
+            />
+        </Modal>
+    );
+};
 
-    useEffect(() => {
-        if (isOpen) {
-            if (initialData) {
-                setName(initialData.name);
-                setIssuer(initialData.issuer);
-                setColor(initialData.color || ISSUER_COLORS[initialData.issuer]);
-            } else {
-                setName('');
-                setIssuer('Amex');
-                setColor(ISSUER_COLORS['Amex']);
-            }
-        }
-    }, [isOpen, initialData]);
+const CardTypeForm: React.FC<{
+    initialData?: CardType;
+    onClose: () => void;
+    onSave: (data: { name: string; issuer: CardIssuer; color: string }) => Promise<void>;
+}> = ({ initialData, onClose, onSave }) => {
+    const [name, setName] = useState(initialData?.name ?? '');
+    const [issuer, setIssuer] = useState<CardIssuer>(initialData?.issuer ?? 'Amex');
+    const [color, setColor] = useState(initialData?.color || ISSUER_COLORS[initialData?.issuer ?? 'Amex']);
 
     const handleIssuerChange = (newIssuer: CardIssuer) => {
         setIssuer(newIssuer);
-        // Only auto-update color if it was the default for the previous issuer
-        // Or just simplify and always auto-update unless user specifically changed it manually?
-        // Let's just auto-update for convenience, user can change back.
         setColor(ISSUER_COLORS[newIssuer] || '#000000');
     };
 
@@ -54,53 +59,40 @@ export const CardTypeModal: React.FC<CardTypeModalProps> = ({
     };
 
     return (
-        <Modal
-            isOpen={isOpen}
-            onClose={onClose}
-            title={title}
-            className="max-w-xl"
-        >
-            <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
-                    <label className="block text-sm font-medium mb-1">Card Type Name</label>
+                    <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground mb-1.5">Card Type Name</label>
                     <input
                         type="text"
                         required
                         autoFocus
                         placeholder="e.g. Sapphire Reserve"
-                        className="w-full px-3 py-2 border rounded-md bg-background focus:ring-2 focus:ring-primary/50 outline-none"
+                        className="w-full h-9 px-3 border border-border rounded-md bg-card text-sm focus:ring-2 focus:ring-ring/40 focus:border-foreground/40 outline-none"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                     />
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium mb-2">Issuer</label>
-                    <div className="grid grid-cols-3 gap-2">
+                    <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Issuer</label>
+                    <div className="grid grid-cols-3 gap-1.5">
                         {ISSUERS.map((iss) => (
                             <button
                                 key={iss}
                                 type="button"
                                 onClick={() => handleIssuerChange(iss)}
                                 className={cn(
-                                    "flex flex-col items-center justify-center p-2 rounded-lg border transition-all h-20",
+                                    "flex items-center gap-2 p-2 rounded-md border transition-colors text-left",
                                     issuer === iss
-                                        ? "border-primary ring-1 ring-primary bg-primary/5"
-                                        : "hover:bg-secondary/50 border-input bg-background"
+                                        ? "border-foreground bg-foreground/5"
+                                        : "border-border bg-card hover:bg-accent"
                                 )}
                             >
                                 <div
-                                    className="w-6 h-6 rounded-full flex items-center justify-center mb-1.5"
+                                    className="w-5 h-5 rounded-sm shrink-0"
                                     style={{ backgroundColor: ISSUER_COLORS[iss] || '#666' }}
-                                >
-                                    <span className="text-[10px] font-bold text-white leading-none">
-                                        {iss.substring(0, 1)}
-                                    </span>
-                                </div>
-                                <span className={cn(
-                                    "text-[10px] text-center font-medium leading-tight",
-                                    issuer === iss ? "text-primary font-bold" : "text-muted-foreground"
-                                )}>
+                                />
+                                <span className="text-xs font-medium truncate">
                                     {iss}
                                 </span>
                             </button>
@@ -109,46 +101,41 @@ export const CardTypeModal: React.FC<CardTypeModalProps> = ({
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium mb-1">Default Color</label>
+                    <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground mb-1.5">Color</label>
                     <div className="flex items-center gap-3">
-                        <div className="relative">
-                            <input
-                                type="color"
-                                className="h-10 w-16 p-0 border-none rounded cursor-pointer overflow-hidden shadow-sm"
-                                value={color}
-                                onChange={(e) => setColor(e.target.value)}
-                            />
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-[10px] uppercase font-mono text-muted-foreground">{color}</span>
-                            <button
-                                type="button"
-                                onClick={() => setColor(ISSUER_COLORS[issuer] || '#000000')}
-                                className="text-[10px] text-primary hover:underline flex items-center mt-0.5"
-                            >
-                                <RotateCcw className="w-2.5 h-2.5 mr-1" />
-                                Reset to Issuer Default
-                            </button>
-                        </div>
+                        <input
+                            type="color"
+                            className="h-9 w-12 p-0 border border-border rounded-md cursor-pointer overflow-hidden"
+                            value={color}
+                            onChange={(e) => setColor(e.target.value)}
+                        />
+                        <span className="font-mono text-xs uppercase text-foreground">{color}</span>
+                        <button
+                            type="button"
+                            onClick={() => setColor(ISSUER_COLORS[issuer] || '#000000')}
+                            className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1 ml-auto"
+                        >
+                            <RotateCcw className="w-3 h-3" />
+                            Reset
+                        </button>
                     </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-4">
+                <div className="flex justify-end gap-2 pt-4 border-t border-border">
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-2 text-sm font-medium border rounded-md hover:bg-muted"
+                        className="h-9 px-3 border border-border bg-card rounded-md hover:bg-accent transition-colors text-xs font-medium uppercase tracking-wider"
                     >
                         Cancel
                     </button>
                     <button
                         type="submit"
-                        className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+                        className="h-9 px-3 bg-foreground text-background rounded-md hover:bg-foreground/85 transition-colors text-xs font-medium uppercase tracking-wider"
                     >
-                        {initialData ? 'Update Card Type' : 'Create Card Type'}
+                        {initialData ? 'Update' : 'Create'}
                     </button>
                 </div>
             </form>
-        </Modal>
     );
 };

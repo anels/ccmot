@@ -2,14 +2,21 @@ import React, { useState } from 'react';
 import { useStore } from '../lib/store';
 import { CATEGORIES } from '../lib/constants';
 import { Trash2, Plus, ChevronDown, ChevronRight, Edit2 } from 'lucide-react';
-import type { CardType, Reward } from '../types';
+import type { CardIssuer, CardType, Reward } from '../types';
 import { CardTypeModal } from './CardTypeModal';
+
+type RewardDraft = {
+    cardTypeId: string;
+    category: string;
+    rewardValue: number;
+    rewardUnit: Reward['rewardUnit'];
+    description: string;
+};
 
 export const RewardConfig: React.FC = () => {
     const { cardTypes, rewards, addCardType, updateCardType, deleteCardType, addReward, deleteReward } = useStore();
     const [expandedCardType, setExpandedCardType] = useState<string | null>(null);
 
-    // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingType, setEditingType] = useState<CardType | undefined>(undefined);
 
@@ -23,7 +30,7 @@ export const RewardConfig: React.FC = () => {
         setIsModalOpen(true);
     };
 
-    const handleSave = async (data: { name: string; issuer: any; color: string }) => {
+    const handleSave = async (data: { name: string; issuer: CardIssuer; color: string }) => {
         if (editingType) {
             await updateCardType(editingType.id, data);
         } else {
@@ -32,17 +39,17 @@ export const RewardConfig: React.FC = () => {
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
-            <div className="flex items-center justify-between">
+        <div className="space-y-5 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Reward Configuration</h1>
-                    <p className="text-gray-600 dark:text-gray-400">Define credit card types and their rewards here.</p>
+                    <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">Catalog</p>
+                    <h2 className="text-xl font-semibold tracking-tight mt-0.5">Card Types & Rewards</h2>
                 </div>
                 <button
                     onClick={handleCreate}
-                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium transition-colors flex items-center gap-2 shadow-lg hover:bg-primary/90"
+                    className="h-9 px-3 bg-foreground text-background rounded-md text-xs font-medium uppercase tracking-wider hover:bg-foreground/85 transition-colors inline-flex items-center gap-1.5"
                 >
-                    <Plus size={18} /> Add Card Type
+                    <Plus size={14} strokeWidth={2.5} /> Card Type
                 </button>
             </div>
 
@@ -51,15 +58,16 @@ export const RewardConfig: React.FC = () => {
                 onClose={() => setIsModalOpen(false)}
                 onSave={handleSave}
                 initialData={editingType}
-                title={editingType ? 'Edit Card Type' : 'Add New Card Type'}
+                title={editingType ? 'Edit Card Type' : 'New Card Type'}
             />
 
-            {/* List Card Types */}
-            <div className="space-y-4">
+            <div className="space-y-2">
                 {cardTypes.length === 0 && (
-                    <div className="text-center py-12 bg-gray-50 dark:bg-gray-900 rounded-xl border border-dashed border-gray-300 dark:border-gray-700">
-                        <p className="text-muted-foreground">No card types defined yet.</p>
-                        <button onClick={handleCreate} className="mt-4 text-primary font-medium hover:underline">Create your first card type</button>
+                    <div className="text-center py-12 bg-muted/20 rounded-md border border-dashed border-border">
+                        <p className="text-sm text-muted-foreground">No card types defined.</p>
+                        <button onClick={handleCreate} className="mt-3 text-xs font-medium text-foreground hover:underline uppercase tracking-wider">
+                            Create your first card type
+                        </button>
                     </div>
                 )}
                 {cardTypes.map(cardType => (
@@ -87,10 +95,9 @@ const CardTypeRow: React.FC<{
     toggleExpand: () => void;
     onEdit: () => void;
     onDelete: () => void;
-    onAddReward: (r: any) => Promise<void>;
+    onAddReward: (r: RewardDraft) => Promise<void>;
     onDeleteReward: (id: string) => Promise<void>;
 }> = ({ cardType, rewards, isExpanded, toggleExpand, onEdit, onDelete, onAddReward, onDeleteReward }) => {
-    // New Reward State
     const [category, setCategory] = useState(CATEGORIES[0]);
     const [isCustomCategory, setIsCustomCategory] = useState(false);
     const [customCategory, setCustomCategory] = useState('');
@@ -102,10 +109,7 @@ const CardTypeRow: React.FC<{
         if (!value) return;
 
         const finalCategory = isCustomCategory ? customCategory : category;
-        if (!finalCategory) {
-            console.error('No category selected');
-            return;
-        }
+        if (!finalCategory) return;
 
         await onAddReward({
             cardTypeId: cardType.id,
@@ -120,131 +124,127 @@ const CardTypeRow: React.FC<{
     };
 
     return (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="bg-card rounded-md border border-border overflow-hidden">
             <div
-                className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                className="flex items-center justify-between p-3 cursor-pointer hover:bg-accent/40 transition-colors"
                 onClick={toggleExpand}
             >
-                <div className="flex items-center gap-3">
-                    {isExpanded ? <ChevronDown size={20} className="text-gray-400" /> : <ChevronRight size={20} className="text-gray-400" />}
-                    <div className="w-10 h-6 rounded bg-gray-200 dark:bg-gray-700 overflow-hidden relative shadow-sm border border-gray-300 dark:border-gray-600">
-                        <div className="absolute inset-0" style={{ backgroundColor: cardType.color }} />
-                    </div>
-                    <div>
-                        <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">{cardType.name}</h3>
-                        <p className="text-sm text-gray-500">{cardType.issuer}</p>
+                <div className="flex items-center gap-3 min-w-0">
+                    {isExpanded ? <ChevronDown size={16} className="text-muted-foreground shrink-0" /> : <ChevronRight size={16} className="text-muted-foreground shrink-0" />}
+                    <div className="w-1 h-9 rounded-sm shrink-0" style={{ backgroundColor: cardType.color }} />
+                    <div className="min-w-0">
+                        <h3 className="text-sm font-semibold truncate">{cardType.name}</h3>
+                        <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">{cardType.issuer}</p>
                     </div>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[11px] font-mono tabular-nums text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                        {rewards.length} {rewards.length === 1 ? 'rule' : 'rules'}
+                    </span>
                     <button
                         onClick={(e) => { e.stopPropagation(); onEdit(); }}
-                        className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                        className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
                         title="Edit Card Type"
                     >
-                        <Edit2 size={18} />
+                        <Edit2 size={14} />
                     </button>
                     <button
                         onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                        className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
                         title="Delete Card Type"
                     >
-                        <Trash2 size={18} />
+                        <Trash2 size={14} />
                     </button>
                 </div>
             </div>
 
             {isExpanded && (
-                <div className="p-4 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700">
-                    {/* Add Reward Form */}
-                    <form onSubmit={handleAddReward} className="flex flex-wrap gap-3 items-end mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+                <div className="p-4 bg-muted/30 border-t border-border">
+                    <form onSubmit={handleAddReward} className="flex flex-wrap gap-2 items-end mb-3 pb-3 border-b border-border">
                         <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">Category</label>
-                            <div className="flex gap-2">
+                            <label className="block text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Category</label>
+                            <div className="flex gap-1.5">
                                 {!isCustomCategory ? (
                                     <select
                                         value={category}
                                         onChange={(e) => {
-                                            if (e.target.value === 'Custom') {
-                                                setIsCustomCategory(true);
-                                            } else {
-                                                setCategory(e.target.value as any);
-                                            }
+                                            if (e.target.value === 'Custom') setIsCustomCategory(true);
+                                            else setCategory(e.target.value as typeof CATEGORIES[number]);
                                         }}
-                                        className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm bg-white dark:bg-gray-800 dark:text-white"
+                                        className="h-8 px-2 rounded-md border border-border text-xs bg-card focus:ring-2 focus:ring-ring/40 focus:border-foreground/40 outline-none"
                                     >
                                         {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                                        <option value="Custom">Custom...</option>
+                                        <option value="Custom">Custom…</option>
                                     </select>
                                 ) : (
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1.5">
                                         <input
                                             type="text"
                                             value={customCategory}
                                             onChange={(e) => setCustomCategory(e.target.value)}
                                             placeholder="Enter category"
-                                            className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm bg-white dark:bg-gray-800 dark:text-white w-32"
+                                            className="h-8 px-2 rounded-md border border-border text-xs bg-card w-32 focus:ring-2 focus:ring-ring/40 focus:border-foreground/40 outline-none"
                                             autoFocus
                                         />
                                         <button
                                             type="button"
                                             onClick={() => setIsCustomCategory(false)}
-                                            className="text-xs text-blue-600 hover:underline"
+                                            className="text-[11px] text-muted-foreground hover:text-foreground"
                                         >
-                                            Select
+                                            Cancel
                                         </button>
                                     </div>
                                 )}
                             </div>
                         </div>
-                        <div className="w-24">
-                            <label className="block text-xs font-medium text-gray-500 mb-1">Value (%)</label>
+                        <div className="w-20">
+                            <label className="block text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Value %</label>
                             <input
                                 type="number"
                                 step="0.1"
                                 value={value}
                                 onChange={(e) => setValue(e.target.value)}
                                 placeholder="5"
-                                className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm bg-white dark:bg-gray-800 dark:text-white"
+                                className="w-full h-8 px-2 rounded-md border border-border text-xs bg-card font-mono tabular-nums focus:ring-2 focus:ring-ring/40 focus:border-foreground/40 outline-none"
                             />
                         </div>
-                        <div className="flex-1 min-w-[200px]">
-                            <label className="block text-xs font-medium text-gray-500 mb-1">Description (Optional)</label>
+                        <div className="flex-1 min-w-[180px]">
+                            <label className="block text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Note</label>
                             <input
                                 type="text"
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
                                 placeholder="e.g. Rotating category"
-                                className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm bg-white dark:bg-gray-800 dark:text-white"
+                                className="w-full h-8 px-2 rounded-md border border-border text-xs bg-card focus:ring-2 focus:ring-ring/40 focus:border-foreground/40 outline-none"
                             />
                         </div>
-                        <button type="submit" className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors">
+                        <button type="submit" className="h-8 px-3 bg-foreground hover:bg-foreground/85 text-background rounded-md text-[11px] font-medium uppercase tracking-wider transition-colors">
                             Add Rule
                         </button>
                     </form>
 
-                    {/* Rewards List */}
-                    <div className="space-y-2">
-                        {rewards.length === 0 && <p className="text-sm text-gray-500 italic">No rewards configured.</p>}
+                    <div className="space-y-1">
+                        {rewards.length === 0 && <p className="text-xs text-muted-foreground italic">No rewards configured.</p>}
                         {rewards.map(reward => (
-                            <div key={reward.id} className="flex items-center justify-between bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700">
-                                <div className="flex items-center gap-4">
-                                    <span className="font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded text-sm">
+                            <div key={reward.id} className="flex items-center justify-between bg-card px-3 py-1.5 rounded-md border border-border">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <span className="font-mono tabular-nums font-semibold text-gain bg-gain-soft px-1.5 py-0.5 rounded-sm text-xs min-w-[44px] text-center">
                                         {reward.rewardValue}%
                                     </span>
-                                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                                    <span className="text-xs font-medium truncate">
                                         {reward.category}
                                     </span>
                                     {reward.description && (
-                                        <span className="text-sm text-gray-500 border-l border-gray-200 dark:border-gray-700 pl-3">
+                                        <span className="text-[11px] text-muted-foreground truncate border-l border-border pl-3">
                                             {reward.description}
                                         </span>
                                     )}
                                 </div>
                                 <button
                                     onClick={() => onDeleteReward(reward.id)}
-                                    className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                                    className="text-muted-foreground hover:text-destructive transition-colors p-1 rounded-md hover:bg-destructive/10 shrink-0"
                                 >
-                                    <Trash2 size={16} />
+                                    <Trash2 size={13} />
                                 </button>
                             </div>
                         ))}

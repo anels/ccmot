@@ -4,26 +4,17 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 
-// Support custom database path via environment variable
 const customDbPath = process.env.CCMOT_DB_PATH;
-let dbPath;
 
-if (customDbPath) {
-    // Use custom path from environment variable
-    dbPath = customDbPath;
-    // Ensure parent directory exists
-    const dbDir = path.dirname(dbPath);
-    if (!fs.existsSync(dbDir)) {
-        fs.mkdirSync(dbDir, { recursive: true });
+function ensureDir(dirPath) {
+    if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
     }
-} else {
-    // Default to user home directory
-    const dataDir = path.join(os.homedir(), '.ccmot');
-    if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-    }
-    dbPath = path.join(dataDir, 'database.sqlite');
 }
+
+const defaultDataDir = path.join(os.homedir(), '.ccmot');
+const dbPath = customDbPath || path.join(defaultDataDir, 'database.sqlite');
+ensureDir(path.dirname(dbPath));
 
 console.log('Database path:', dbPath);
 
@@ -32,13 +23,18 @@ const db = new sqlite3.Database(dbPath, (err) => {
         console.error('Error opening database', err.message);
     } else {
         console.log('Connected to the SQLite database.');
-        initDb();
+        db.run('PRAGMA foreign_keys = ON', (pragmaErr) => {
+            if (pragmaErr) {
+                console.error('Error enabling foreign keys', pragmaErr.message);
+                return;
+            }
+            initDb();
+        });
     }
 });
 
 function initDb() {
     db.serialize(() => {
-        // Cards Table
         db.run(`CREATE TABLE IF NOT EXISTS cards (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -51,7 +47,6 @@ function initDb() {
             FOREIGN KEY(card_type_id) REFERENCES card_types(id)
         )`);
 
-        // Offers Table
         db.run(`CREATE TABLE IF NOT EXISTS offers (
             id TEXT PRIMARY KEY,
             merchantName TEXT NOT NULL,
@@ -62,7 +57,6 @@ function initDb() {
             url TEXT
         )`);
 
-        // Tracked Offers Table
         db.run(`CREATE TABLE IF NOT EXISTS tracked_offers (
             id TEXT PRIMARY KEY,
             offerId TEXT NOT NULL,
@@ -73,7 +67,6 @@ function initDb() {
             FOREIGN KEY(cardId) REFERENCES cards(id) ON DELETE CASCADE
         )`);
 
-        // Card Types Table
         db.run(`CREATE TABLE IF NOT EXISTS card_types (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -81,7 +74,6 @@ function initDb() {
             color TEXT NOT NULL
         )`);
 
-        // Rewards Table
         db.run(`CREATE TABLE IF NOT EXISTS rewards (
             id TEXT PRIMARY KEY,
             cardTypeId TEXT NOT NULL,
@@ -92,39 +84,22 @@ function initDb() {
             FOREIGN KEY(cardTypeId) REFERENCES card_types(id) ON DELETE CASCADE
         )`);
 
-        // Add columns if they don't exist (migrations)
-        // Add card_type_id to cards if needed
-        db.run(`PRAGMA user_version`, (err, row) => {
-            if (err) {
-                console.error("Error getting user_version", err);
-                return;
-            }
-            // Simple migration check - if we need more complex ones we should use a proper migration system
-            // For now, ensuring columns exist via ALTER TABLE if needed is safer but specialized.
-            // Since we use IF NOT EXISTS for tables, that handles new DBs.
-            // For existing DBs, we might need to add columns.
+        ensureColumn('cards', 'card_type_id', 'TEXT');
+        ensureColumn('card_types', 'color', 'TEXT');
+    });
+}
 
-            // Check if card_type_id exists in cards
-            db.all("PRAGMA table_info(cards)", (err, rows) => {
-                if (!err && rows) {
-                    const hasCardTypeId = rows.some(r => r.name === 'card_type_id');
-                    if (!hasCardTypeId) {
-                        console.log("Migrating: Adding card_type_id to cards table");
-                        db.run("ALTER TABLE cards ADD COLUMN card_type_id TEXT");
-                    }
-                }
-            });
-            // Check if color exists in card_types
-            db.all("PRAGMA table_info(card_types)", (err, rows) => {
-                if (!err && rows) {
-                    const hasColor = rows.some(r => r.name === 'color');
-                    if (!hasColor) {
-                        console.log("Migrating: Adding color to card_types table");
-                        db.run("ALTER TABLE card_types ADD COLUMN color TEXT");
-                    }
-                }
-            });
-        });
+function ensureColumn(tableName, columnName, definition) {
+    db.all(`PRAGMA table_info(${tableName})`, (err, rows) => {
+        if (err) {
+            console.error(`Error checking ${tableName}.${columnName}`, err);
+            return;
+        }
+
+        if (!rows.some(row => row.name === columnName)) {
+            console.log(`Migrating: Adding ${columnName} to ${tableName} table`);
+            db.run(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+        }
     });
 }
 

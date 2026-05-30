@@ -1,8 +1,10 @@
 import { create } from 'zustand';
-import type { CreditCard, Offer, AppData, OfferStatus } from '../types';
+import type { CreditCard, Offer, AppData, OfferStatus, CardType, Reward } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { api } from '../api/client';
 import { normalizeImportData } from './data-utils';
+
+type RewardInput = Partial<Reward> & Pick<Reward, 'cardTypeId' | 'category' | 'rewardValue' | 'rewardUnit'>;
 
 interface AppState extends AppData {
     // Initialization
@@ -27,16 +29,16 @@ interface AppState extends AppData {
     deleteTrackedOffer: (id: string) => Promise<void>;
 
     // Bulk Operations (for Sync/Import)
-    importData: (data: AppData) => Promise<void>;
+    importData: (data: Partial<AppData>) => Promise<void>;
     exportData: () => AppData;
 
     // Card Types
-    addCardType: (cardType: Omit<import('../types').CardType, 'id'>) => Promise<string>;
-    updateCardType: (id: string, updates: Partial<import('../types').CardType>) => Promise<void>;
+    addCardType: (cardType: Omit<CardType, 'id'>) => Promise<string>;
+    updateCardType: (id: string, updates: Partial<CardType>) => Promise<void>;
     deleteCardType: (id: string) => Promise<void>;
 
     // Rewards
-    addReward: (reward: Partial<import('../types').Reward> & { cardTypeId: string, category: string, rewardValue: number, rewardUnit: string }) => Promise<void>;
+    addReward: (reward: RewardInput) => Promise<void>;
     deleteReward: (id: string) => Promise<void>;
 }
 
@@ -53,28 +55,10 @@ export const useStore = create<AppState>((set, get) => ({
         set({ isLoading: true, error: null });
         try {
             const data = await api.getInitialData();
-
-            // Map backend snake_case to frontend camelCase
-            const mappedCards = (data.cards || []).map((c: any) => ({
-                ...c,
-                cardTypeId: c.card_type_id
-            }));
-
-            const mappedRewards = (data.rewards || []).map((r: any) => ({
-                id: r.id,
-                cardTypeId: r.card_type_id,
-                category: r.category,
-                rewardValue: r.reward_value,
-                rewardUnit: r.reward_unit,
-                description: r.description
-            }));
+            const mappedData = normalizeImportData(data);
 
             set({
-                cards: mappedCards,
-                offers: data.offers || [],
-                trackedOffers: data.trackedOffers || [],
-                cardTypes: data.cardTypes || [],
-                rewards: mappedRewards,
+                ...mappedData,
                 isLoading: false,
             });
         } catch (error) {
@@ -86,28 +70,10 @@ export const useStore = create<AppState>((set, get) => ({
     refetchData: async () => {
         try {
             const data = await api.getInitialData();
-
-            // Map backend snake_case to frontend camelCase
-            const mappedCards = (data.cards || []).map((c: any) => ({
-                ...c,
-                cardTypeId: c.card_type_id
-            }));
-
-            const mappedRewards = (data.rewards || []).map((r: any) => ({
-                id: r.id,
-                cardTypeId: r.card_type_id,
-                category: r.category,
-                rewardValue: r.reward_value,
-                rewardUnit: r.reward_unit,
-                description: r.description
-            }));
+            const mappedData = normalizeImportData(data);
 
             set({
-                cards: mappedCards,
-                offers: data.offers || [],
-                trackedOffers: data.trackedOffers || [],
-                cardTypes: data.cardTypes || [],
-                rewards: mappedRewards,
+                ...mappedData,
                 error: null,
             });
         } catch (error) {
@@ -258,13 +224,13 @@ export const useStore = create<AppState>((set, get) => ({
     importData: async (data) => {
         const cleanedData = normalizeImportData(data);
 
-        set(cleanedData);
-
         try {
             await api.importData(cleanedData);
+            await get().refetchData();
         } catch (error) {
             console.error('Failed to import data to backend:', error);
-            // Ideally notify user, but console error for now
+            await get().refetchData();
+            throw error;
         }
     },
 
@@ -288,7 +254,7 @@ export const useStore = create<AppState>((set, get) => ({
 
         set((state) => ({ cardTypes: [...state.cardTypes, newCardType] }));
         try {
-            await api.addCardType(newCardType as any);
+            await api.addCardType(newCardType);
             return id;
         } catch (error) {
             console.error('Failed to add card type:', error);
@@ -300,10 +266,6 @@ export const useStore = create<AppState>((set, get) => ({
     updateCardType: async (id, updates) => {
         set((state) => ({
             cardTypes: state.cardTypes.map((t) => (t.id === id ? { ...t, ...updates } : t)),
-            // Also update any cards that use this type? The cards store issuer/color mostly for legacy reasons or caching.
-            // If we want the cards to visually update immediately if they rely on the type's color, we might need to update them too
-            // or just rely on the UI using the type's color.
-            // For now, let's just update the type. The UI should use the type's color if cardTypeId is present.
         }));
         try {
             await api.updateCardType(id, updates);
@@ -316,7 +278,10 @@ export const useStore = create<AppState>((set, get) => ({
     deleteCardType: async (id: string) => {
         set((state) => ({
             cardTypes: state.cardTypes.filter((c) => c.id !== id),
-            rewards: state.rewards.filter((r) => r.cardTypeId !== id), // Cascading delete in UI
+            cards: state.cards.map((card) =>
+                card.cardTypeId === id ? { ...card, cardTypeId: undefined } : card
+            ),
+            rewards: state.rewards.filter((r) => r.cardTypeId !== id),
         }));
         try {
             await api.deleteCardType(id);
@@ -329,15 +294,14 @@ export const useStore = create<AppState>((set, get) => ({
     // Rewards
     addReward: async (reward) => {
         const id = reward.id || uuidv4();
-        const newReward: import('../types').Reward = {
+        const newReward: Reward = {
             id,
             cardTypeId: reward.cardTypeId,
             category: reward.category,
             rewardValue: reward.rewardValue,
-            rewardUnit: reward.rewardUnit as '%' | 'x' | 'points',
+            rewardUnit: reward.rewardUnit,
             description: reward.description || '',
         };
-        console.log('Store addReward:', newReward);
         set((state) => ({
             rewards: [...state.rewards.filter(r => r.id !== id), newReward]
         }));
