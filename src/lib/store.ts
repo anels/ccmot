@@ -259,7 +259,7 @@ export const useStore = create<AppState>((set, get) => ({
         } catch (error) {
             console.error('Failed to add card type:', error);
             await get().refetchData();
-            return id;
+            return ''; // signal failure like addOffer does
         }
     },
 
