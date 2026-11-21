@@ -33,9 +33,10 @@ export const RewardConfig: React.FC = () => {
     const handleSave = async (data: { name: string; issuer: CardIssuer; color: string }) => {
         if (editingType) {
             await updateCardType(editingType.id, data);
-        } else {
-            await addCardType(data);
+            return;
         }
+        // Propagate addCardType's '' failure signal so the modal stays open.
+        return addCardType(data);
     };
 
     return (
