@@ -8,7 +8,8 @@ import { RotateCcw } from 'lucide-react';
 interface CardTypeModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (data: { name: string; issuer: CardIssuer; color: string }) => Promise<void>;
+    // onSave resolves with the new id, or '' on failure (dialog stays open).
+    onSave: (data: { name: string; issuer: CardIssuer; color: string }) => Promise<string | void>;
     initialData?: CardType;
     title?: string;
 }
@@ -40,7 +41,7 @@ export const CardTypeModal: React.FC<CardTypeModalProps> = ({
 const CardTypeForm: React.FC<{
     initialData?: CardType;
     onClose: () => void;
-    onSave: (data: { name: string; issuer: CardIssuer; color: string }) => Promise<void>;
+    onSave: (data: { name: string; issuer: CardIssuer; color: string }) => Promise<string | void>;
 }> = ({ initialData, onClose, onSave }) => {
     const [name, setName] = useState(initialData?.name ?? '');
     const [issuer, setIssuer] = useState<CardIssuer>(initialData?.issuer ?? 'Amex');
@@ -54,7 +55,9 @@ const CardTypeForm: React.FC<{
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!name) return;
-        await onSave({ name, issuer, color });
+        // '' means the save failed; keep the dialog open so the input is not lost.
+        const result = await onSave({ name, issuer, color });
+        if (result === '') return;
         onClose();
     };
 

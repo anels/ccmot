@@ -20,6 +20,7 @@ interface AppState extends AppData {
     updateCard: (id: string, updates: Partial<CreditCard>) => Promise<void>;
     deleteCard: (id: string) => Promise<void>;
 
+    // Resolves with the new id, or '' on failure (state is refetched); treat '' as failure.
     addOffer: (offer: Omit<Offer, 'id'>) => Promise<string>;
     updateOffer: (id: string, updates: Partial<Offer>) => Promise<void>;
     deleteOffer: (id: string) => Promise<void>;
@@ -33,6 +34,7 @@ interface AppState extends AppData {
     exportData: () => AppData;
 
     // Card Types
+    // Same contract as addOffer: '' means the create failed.
     addCardType: (cardType: Omit<CardType, 'id'>) => Promise<string>;
     updateCardType: (id: string, updates: Partial<CardType>) => Promise<void>;
     deleteCardType: (id: string) => Promise<void>;
@@ -259,7 +261,7 @@ export const useStore = create<AppState>((set, get) => ({
         } catch (error) {
             console.error('Failed to add card type:', error);
             await get().refetchData();
-            return id;
+            return ''; // signal failure like addOffer does
         }
     },
 
