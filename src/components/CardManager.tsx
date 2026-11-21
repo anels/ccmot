@@ -90,6 +90,11 @@ const CardManager: React.FC = () => {
 
     const handleCreateTypeSave = async (data: { name: string; issuer: CardIssuer; color: string }) => {
         const id = await addCardType(data);
+        if (!id) {
+            // addCardType failed; the store already refetched. Keep the
+            // dialog open so the user's input is not lost.
+            return;
+        }
         setIsCreateTypeOpen(false);
         setFormData(prev => ({
             ...prev,
