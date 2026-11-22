@@ -11,6 +11,7 @@ interface AppState extends AppData {
     isLoading: boolean;
     error: string | null;
     initialize: () => Promise<void>;
+    clearError: () => void;
 
     // Helper to refetch all data on error (prevents stale state issues)
     refetchData: () => Promise<void>;
@@ -44,6 +45,13 @@ interface AppState extends AppData {
     deleteReward: (id: string) => Promise<void>;
 }
 
+// Optimistic updates are discarded by the refetch, so tell the user the change was lost.
+const reportFailure = async (message: string, error: unknown) => {
+    console.error(`${message}:`, error);
+    useStore.setState({ error: `${message}. The change was not saved.` });
+    await useStore.getState().refetchData();
+};
+
 export const useStore = create<AppState>((set, get) => ({
     cards: [],
     offers: [],
@@ -65,19 +73,18 @@ export const useStore = create<AppState>((set, get) => ({
             });
         } catch (error) {
             console.error('Failed to initialize store:', error);
-            set({ isLoading: false, error: 'Failed to load data' });
+            set({ isLoading: false, error: 'Failed to load data. Is the backend running?' });
         }
     },
+
+    clearError: () => set({ error: null }),
 
     refetchData: async () => {
         try {
             const data = await api.getInitialData();
             const mappedData = normalizeImportData(data);
 
-            set({
-                ...mappedData,
-                error: null,
-            });
+            set(mappedData);
         } catch (error) {
             console.error('Failed to refetch data:', error);
         }
@@ -90,9 +97,7 @@ export const useStore = create<AppState>((set, get) => ({
         try {
             await api.addCard(newCard);
         } catch (error) {
-            console.error('Failed to add card:', error);
-            // Refetch to get consistent state instead of reverting to stale data
-            await get().refetchData();
+            await reportFailure('Failed to add card', error);
         }
     },
 
@@ -103,9 +108,7 @@ export const useStore = create<AppState>((set, get) => ({
         try {
             await api.updateCard(id, updates);
         } catch (error) {
-            console.error('Failed to update card:', error);
-            // Refetch to get consistent state instead of reverting to stale data
-            await get().refetchData();
+            await reportFailure('Failed to update card', error);
         }
     },
 
@@ -117,9 +120,7 @@ export const useStore = create<AppState>((set, get) => ({
         try {
             await api.deleteCard(id);
         } catch (error) {
-            console.error('Failed to delete card:', error);
-            // Refetch to get consistent state instead of reverting to stale data
-            await get().refetchData();
+            await reportFailure('Failed to delete card', error);
         }
     },
 
@@ -133,9 +134,7 @@ export const useStore = create<AppState>((set, get) => ({
             await api.addOffer(newOffer);
             return id;
         } catch (error) {
-            console.error('Failed to add offer:', error);
-            // Refetch to get consistent state instead of reverting to stale data
-            await get().refetchData();
+            await reportFailure('Failed to add offer', error);
             return ''; // Return empty string on failure
         }
     },
@@ -147,9 +146,7 @@ export const useStore = create<AppState>((set, get) => ({
         try {
             await api.updateOffer(id, updates);
         } catch (error) {
-            console.error('Failed to update offer:', error);
-            // Refetch to get consistent state instead of reverting to stale data
-            await get().refetchData();
+            await reportFailure('Failed to update offer', error);
         }
     },
 
@@ -161,9 +158,7 @@ export const useStore = create<AppState>((set, get) => ({
         try {
             await api.deleteOffer(id);
         } catch (error) {
-            console.error('Failed to delete offer:', error);
-            // Refetch to get consistent state instead of reverting to stale data
-            await get().refetchData();
+            await reportFailure('Failed to delete offer', error);
         }
     },
 
@@ -189,9 +184,7 @@ export const useStore = create<AppState>((set, get) => ({
         try {
             await api.addTrackedOffer(newTrackedOffer);
         } catch (error) {
-            console.error('Failed to track offer:', error);
-            // Refetch to get consistent state instead of reverting to stale data
-            await get().refetchData();
+            await reportFailure('Failed to track offer', error);
         }
     },
 
@@ -204,9 +197,7 @@ export const useStore = create<AppState>((set, get) => ({
         try {
             await api.updateTrackedOfferStatus(trackedOfferId, status);
         } catch (error) {
-            console.error('Failed to update tracked offer status:', error);
-            // Refetch to get consistent state instead of reverting to stale data
-            await get().refetchData();
+            await reportFailure('Failed to update tracked offer status', error);
         }
     },
 
@@ -217,9 +208,7 @@ export const useStore = create<AppState>((set, get) => ({
         try {
             await api.deleteTrackedOffer(id);
         } catch (error) {
-            console.error('Failed to delete tracked offer:', error);
-            // Refetch to get consistent state instead of reverting to stale data
-            await get().refetchData();
+            await reportFailure('Failed to delete tracked offer', error);
         }
     },
 
@@ -259,8 +248,7 @@ export const useStore = create<AppState>((set, get) => ({
             await api.addCardType(newCardType);
             return id;
         } catch (error) {
-            console.error('Failed to add card type:', error);
-            await get().refetchData();
+            await reportFailure('Failed to add card type', error);
             return ''; // signal failure like addOffer does
         }
     },
@@ -272,8 +260,7 @@ export const useStore = create<AppState>((set, get) => ({
         try {
             await api.updateCardType(id, updates);
         } catch (error) {
-            console.error('Failed to update card type:', error);
-            await get().refetchData();
+            await reportFailure('Failed to update card type', error);
         }
     },
 
@@ -288,8 +275,7 @@ export const useStore = create<AppState>((set, get) => ({
         try {
             await api.deleteCardType(id);
         } catch (error) {
-            console.error('Failed to delete card type:', error);
-            await get().refetchData();
+            await reportFailure('Failed to delete card type', error);
         }
     },
 
@@ -310,8 +296,7 @@ export const useStore = create<AppState>((set, get) => ({
         try {
             await api.addReward(newReward);
         } catch (error) {
-            console.error('Failed to add/update reward:', error);
-            await get().refetchData();
+            await reportFailure('Failed to add/update reward', error);
         }
     },
 
@@ -322,8 +307,7 @@ export const useStore = create<AppState>((set, get) => ({
         try {
             await api.deleteReward(id);
         } catch (error) {
-            console.error('Failed to delete reward:', error);
-            await get().refetchData();
+            await reportFailure('Failed to delete reward', error);
         }
     },
 }));

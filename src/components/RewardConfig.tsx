@@ -4,6 +4,7 @@ import { CATEGORIES } from '../lib/constants';
 import { Trash2, Plus, ChevronDown, ChevronRight, Edit2 } from 'lucide-react';
 import type { CardIssuer, CardType, Reward } from '../types';
 import { CardTypeModal } from './CardTypeModal';
+import { ConfirmDialog } from './ConfirmDialog';
 
 type RewardDraft = {
     cardTypeId: string;
@@ -19,6 +20,7 @@ export const RewardConfig: React.FC = () => {
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingType, setEditingType] = useState<CardType | undefined>(undefined);
+    const [deleteTypeId, setDeleteTypeId] = useState<string | null>(null);
 
     const handleCreate = () => {
         setEditingType(undefined);
@@ -62,6 +64,14 @@ export const RewardConfig: React.FC = () => {
                 title={editingType ? 'Edit Card Type' : 'New Card Type'}
             />
 
+            <ConfirmDialog
+                isOpen={!!deleteTypeId}
+                onClose={() => setDeleteTypeId(null)}
+                onConfirm={() => { if (deleteTypeId) deleteCardType(deleteTypeId); }}
+                title="Delete Card Type"
+                message="Delete this card type? Its reward rules will be deleted and cards using it will be unlinked."
+            />
+
             <div className="space-y-2">
                 {cardTypes.length === 0 && (
                     <div className="text-center py-12 bg-muted/20 rounded-md border border-dashed border-border">
@@ -79,7 +89,7 @@ export const RewardConfig: React.FC = () => {
                         isExpanded={expandedCardType === cardType.id}
                         toggleExpand={() => setExpandedCardType(expandedCardType === cardType.id ? null : cardType.id)}
                         onEdit={() => handleEdit(cardType)}
-                        onDelete={() => deleteCardType(cardType.id)}
+                        onDelete={() => setDeleteTypeId(cardType.id)}
                         onAddReward={addReward}
                         onDeleteReward={deleteReward}
                     />

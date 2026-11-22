@@ -2,9 +2,13 @@ import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, CreditCard, Tag, Settings, Menu, X, Diamond } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useStore } from '../lib/store';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const error = useStore((state) => state.error);
+    const initialize = useStore((state) => state.initialize);
+    const clearError = useStore((state) => state.clearError);
 
     const navItems = [
         { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -80,6 +84,27 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                             className="fixed inset-0 bg-foreground/30 z-30 lg:hidden animate-in fade-in"
                             onClick={() => setIsMobileMenuOpen(false)}
                         />
+                    )}
+
+                    {error && (
+                        <div role="alert" className="mb-4 flex items-center justify-between gap-3 px-3 py-2 rounded-md border border-destructive/30 bg-destructive/10 text-sm text-destructive">
+                            <span>{error}</span>
+                            <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                    onClick={() => initialize()}
+                                    className="h-7 px-2 rounded-md border border-destructive/30 hover:bg-destructive/10 transition-colors text-[11px] font-medium uppercase tracking-wider"
+                                >
+                                    Reload
+                                </button>
+                                <button
+                                    onClick={clearError}
+                                    className="p-1 rounded-md hover:bg-destructive/10 transition-colors"
+                                    aria-label="Dismiss"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
                     )}
 
                     <div className="animate-in fade-in duration-200">

@@ -241,7 +241,9 @@ const CardManager: React.FC = () => {
                                             <input
                                                 type="text"
                                                 inputMode="numeric"
-                                                pattern="[0-9]*"
+                                                required
+                                                pattern="[0-9]{4}"
+                                                title="4 digits"
                                                 maxLength={4}
                                                 placeholder="1234"
                                                 className="w-full h-9 px-3 border border-border rounded-md bg-card text-sm font-mono focus:ring-2 focus:ring-ring/40 focus:border-foreground/40 outline-none"

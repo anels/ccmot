@@ -1,14 +1,20 @@
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const db = require('./db');
 
 const app = express();
 const PORT = 3001;
+// Loopback only by default: the API has no authentication.
+const HOST = process.env.CCMOT_HOST || '127.0.0.1';
+const ALLOWED_ORIGINS = (process.env.CCMOT_ALLOWED_ORIGINS
+    || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173')
+    .split(',').map(origin => origin.trim()).filter(Boolean);
 
 // Middleware
-app.use(cors());
-app.use(express.json());
+app.use(cors({ origin: ALLOWED_ORIGINS }));
+app.use(express.json({ limit: '10mb' })); // backups exceed the 100kb default
 app.use(morgan('dev')); // Logs HTTP requests
 
 // Utility for logging with timestamp
@@ -28,25 +34,38 @@ const logError = (message, error) => {
 
 // --- Database Helpers ---
 
-const dbAllAsync = (sql, params = []) => {
+// Every request shares one connection, so a statement issued while another
+// request's transaction is open would join that transaction. Run each
+// statement or transaction to completion before the next one starts.
+const inTransaction = new AsyncLocalStorage();
+let dbQueue = Promise.resolve();
+
+const exclusive = (task) => {
+    if (inTransaction.getStore()) return task();
+    const result = dbQueue.then(task);
+    dbQueue = result.catch(() => {});
+    return result;
+};
+
+const dbAllAsync = (sql, params = []) => exclusive(() => {
     return new Promise((resolve, reject) => {
         db.all(sql, params, (err, rows) => {
             if (err) reject(err);
             else resolve(rows);
         });
     });
-};
+});
 
-const dbRunAsync = (sql, params = []) => {
+const dbRunAsync = (sql, params = []) => exclusive(() => {
     return new Promise((resolve, reject) => {
         db.run(sql, params, function (err) {
             if (err) reject(err);
             else resolve(this);
         });
     });
-};
+});
 
-const withTransaction = async (operation, rollbackMessage = 'Transaction rollback failed') => {
+const withTransaction = (operation, rollbackMessage = 'Transaction rollback failed') => exclusive(() => inTransaction.run(true, async () => {
     let transactionStarted = false;
     try {
         await dbRunAsync("BEGIN IMMEDIATE TRANSACTION");
@@ -64,7 +83,7 @@ const withTransaction = async (operation, rollbackMessage = 'Transaction rollbac
         }
         throw err;
     }
-};
+}));
 
 // --- Cards ---
 
@@ -167,7 +186,7 @@ app.post('/api/offers', async (req, res) => {
 app.put('/api/offers/:id', async (req, res) => {
     log(`Updating offer ${req.params.id}...`, req.body);
     const { merchantName, description, terms, category, expiryDate, url } = req.body;
-    const sql = `UPDATE offers SET merchantName = ?, description = ?, terms = ?, category = ?, expiryDate = ?, url = ? WHERE id = ?`;
+    const sql = `UPDATE offers SET merchantName = ?, description = ?, terms = ?, category = ?, expiryDate = ?, url = COALESCE(?, url) WHERE id = ?`;
     const params = [merchantName, description, terms, category, expiryDate, url, req.params.id];
 
     try {
@@ -500,6 +519,6 @@ app.get('/api/initial-data', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    log(`Server is running on http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+    log(`Server is running on http://${HOST}:${PORT}`);
 });

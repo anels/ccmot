@@ -1,26 +1,7 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { X } from 'lucide-react';
 import { cn } from '../lib/utils';
-
-// Module-level counter so stacked modals don't restore body scroll while one is still open.
-let openModalCount = 0;
-let savedBodyOverflow: string | null = null;
-
-function acquireScrollLock() {
-    if (openModalCount === 0) {
-        savedBodyOverflow = document.body.style.overflow;
-        document.body.style.overflow = 'hidden';
-    }
-    openModalCount += 1;
-}
-
-function releaseScrollLock() {
-    openModalCount = Math.max(0, openModalCount - 1);
-    if (openModalCount === 0) {
-        document.body.style.overflow = savedBodyOverflow ?? '';
-        savedBodyOverflow = null;
-    }
-}
+import { useDialogLayer } from '../hooks/useDialogLayer';
 
 interface ModalProps {
     isOpen: boolean;
@@ -41,18 +22,7 @@ export const Modal: React.FC<ModalProps> = ({
     headerActions,
     footer
 }) => {
-    useEffect(() => {
-        if (!isOpen) return;
-        acquireScrollLock();
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => {
-            document.removeEventListener('keydown', onKey);
-            releaseScrollLock();
-        };
-    }, [isOpen, onClose]);
+    useDialogLayer(isOpen, onClose);
 
     if (!isOpen) return null;
 
