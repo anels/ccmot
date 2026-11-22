@@ -46,6 +46,19 @@ export function isOfferExpired(offer: Offer, status?: OfferStatus): boolean {
     return expiryDate < now;
 }
 
+/**
+ * Cards as they are displayed: a card with a card type shows that type's issuer
+ * and color, so editing the type restyles every card of it. The values stored
+ * on the card apply only when it has no type.
+ */
+export function resolveCards(cards: CreditCard[], cardTypes: CardType[]): CreditCard[] {
+    const typesById = new Map(cardTypes.map(type => [type.id, type]));
+    return cards.map(card => {
+        const type = card.cardTypeId ? typesById.get(card.cardTypeId) : undefined;
+        return type ? { ...card, issuer: type.issuer, color: type.color || card.color } : card;
+    });
+}
+
 export type EnrichedTrackedOffer = TrackedOffer & { offer?: Offer; card?: CreditCard };
 
 type SaveFilePickerOptions = {

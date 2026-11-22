@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useStore } from '../lib/store';
+import { useCards } from '../hooks/useCards';
 import { ConfirmDialog } from './ConfirmDialog';
 import type { OfferCategory } from '../types';
 import { Search, Gift, Download, Sparkles, ChevronDown, Check, Filter, ArrowUpRight, Clock, Trophy } from 'lucide-react';
@@ -17,7 +18,8 @@ const DASHBOARD_SEARCH_FIELDS = [
 ];
 
 const Dashboard: React.FC = () => {
-    const { offers, cards, trackedOffers, trackOffer, updateOfferStatus, deleteTrackedOffer: untrackOffer, rewards, cardTypes } = useStore();
+    const cards = useCards();
+    const { offers, trackedOffers, trackOffer, updateOfferStatus, deleteTrackedOffer: untrackOffer, rewards, cardTypes } = useStore();
     const [selectedCategory, setSelectedCategory] = useState<OfferCategory | 'All' | string>('All');
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [dropdownOpen, setDropdownOpen] = useState(false);

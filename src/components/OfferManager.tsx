@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../lib/store';
+import { useCards } from '../hooks/useCards';
 import { useSearch } from '../hooks/useSearch';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Modal } from './Modal';
@@ -17,7 +18,8 @@ type DateInputWithPicker = HTMLInputElement & {
 const OFFER_SEARCH_FIELDS: (keyof Offer)[] = ['merchantName', 'description', 'terms', 'category'];
 
 const OfferManager: React.FC = () => {
-    const { offers, cards, trackedOffers, addOffer, updateOffer, deleteOffer, trackOffer, deleteTrackedOffer } = useStore();
+    const cards = useCards();
+    const { offers, trackedOffers, addOffer, updateOffer, deleteOffer, trackOffer, deleteTrackedOffer } = useStore();
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
