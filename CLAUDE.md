@@ -1,7 +1,7 @@
 # CCMOT — Project Context for Claude
 
 Credit Card Offer Tracker. Vite + React 19 + TypeScript frontend talking to a
-local Express + SQLite backend. Also packaged for Android via Capacitor.
+local Express + SQLite backend.
 
 ## Quick Start
 
@@ -72,10 +72,6 @@ different local file. Wipe that file to reset state.
   `optionalDependencies` to work around the npm bug where the platform-
   specific rollup binary fails to install. If `npm run build` says
   `Cannot find module '@rollup/rollup-darwin-arm64'`, rerun `npm install`.
-- **Capacitor**: `capacitor.config.ts` targets `appId: com.ccmot.app`,
-  `webDir: dist`. Build with `npm run build` then `npx cap sync` /
-  `cap run android`. Capacitor only packages the frontend; set `VITE_API_URL`
-  to a reachable backend for native builds.
 
 ## Git
 

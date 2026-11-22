@@ -68,7 +68,3 @@ For deep dive, see [TECH_DOC.md](./src/TECH_DOC.md).
    - Frontend: `http://localhost:5173` (or similar)
    - Backend API: `http://localhost:3001`
    - Database: `~/.ccmot/database.sqlite` (or `CCMOT_DB_PATH` if set)
-
-## Android / Capacitor
-
-Capacitor packages the frontend from `dist`; it does not bundle the local Node/SQLite backend. For native builds, point `VITE_API_URL` at a reachable backend host before building.
