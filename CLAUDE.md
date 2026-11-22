@@ -11,6 +11,7 @@ cd server && npm install && cd ..
 npm run dev:all          # frontend (5173) + backend (3001) concurrent
 npm run build            # tsc -b && vite build
 npm run lint             # eslint
+npm test                 # vitest: backend API and migration tests
 ```
 
 Single-process variants: `npm run dev` (frontend only), `npm run server`
@@ -34,11 +35,22 @@ different local file. Wipe that file to reset state.
   **STATUS_DOT**, **CATEGORY_COLORS** + `getCategoryColor()`.
 - `src/api/client.ts` — fetch wrapper, base URL `VITE_API_URL`
   (default `http://localhost:3001/api`).
-- `server/index.js` — Express routes for cards / offers / trackedOffers /
-  cardTypes / rewards. Uses `async/await` + `Promise`s (refactored from
-  callbacks).
-- `server/db.js` — SQLite schema + connection. Foreign keys are enabled on
-  connection; tracked offers cascade when cards/offers are deleted.
+- `server/index.js` — reads the environment, opens the database, listens.
+- `server/app.js` — `createApp(db)`. The `RESOURCES` table declares each
+  resource's columns and required fields, and the CRUD routes, import and
+  `/api/initial-data` are generated from it. Add a column there and in a
+  migration. Errors: 400 for validation and constraint failures, 404 for an
+  unknown id, 500 otherwise.
+- `server/db.js` — `openDatabase()` over better-sqlite3 (synchronous). The
+  schema is versioned with `PRAGMA user_version`: to change it, append a
+  function to `MIGRATIONS`, never edit an existing one. The file is copied to
+  `<db>.v<n>.bak` before a migration runs. Foreign keys cascade: deleting a
+  card or offer removes its tracked offers, deleting a card type removes its
+  rewards and unlinks its cards.
+- `server/test/` — vitest + supertest against an in-memory database.
+- Field names are camelCase end to end (database columns, API, frontend
+  types). Only `normalizeImportData` still accepts the old snake_case names,
+  for backups exported before the rename.
 
 ## Styling
 
@@ -61,10 +73,11 @@ different local file. Wipe that file to reset state.
 - **Card color contrast**: when rendering text over a user-picked card color
   (`card.color` hex), pass it through `getReadableTextColor()` for the
   inline `color` style. Hard-coded `text-white` fails on light user colors.
-- **Modal stacking**: `Modal.tsx` uses a module-level open counter for the
-  body scroll-lock. If you add a new dialog component, use the same pattern
-  (or just use `Modal`) — naive `body.style.overflow` toggling unlocks scroll
-  behind the outer modal when an inner one closes.
+- **Modal stacking**: `Modal`, `ConfirmDialog` and `AlertDialog` share
+  `src/hooks/useDialogLayer.ts`, which keeps one stack of open dialogs for the
+  body scroll-lock and gives Escape to the topmost one. A new dialog component
+  must use that hook (or just use `Modal`) — naive `body.style.overflow`
+  toggling unlocks scroll behind the outer modal when an inner one closes.
 - **rtk proxy**: the developer shell wraps `git`/`ls`/etc. through `rtk` for
   token compression. For raw output (full `git diff`, etc.) prefix with
   `rtk proxy <cmd>`.

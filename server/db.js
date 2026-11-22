@@ -1,106 +1,144 @@
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
-const os = require('os');
-const fs = require('fs');
+const DEFAULT_DB_PATH = path.join(os.homedir(), '.ccmot', 'database.sqlite');
 
-const customDbPath = process.env.CCMOT_DB_PATH;
+// Listed parents first, so rows can be copied in this order.
+const TABLES = ['card_types', 'cards', 'offers', 'tracked_offers', 'rewards'];
 
-function ensureDir(dirPath) {
-    if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath, { recursive: true });
+const SCHEMA = `
+    CREATE TABLE card_types (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        issuer TEXT NOT NULL,
+        color TEXT NOT NULL
+    );
+
+    CREATE TABLE cards (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        issuer TEXT NOT NULL,
+        last4 TEXT NOT NULL,
+        color TEXT NOT NULL,
+        cardHolder TEXT,
+        notes TEXT,
+        cardTypeId TEXT REFERENCES card_types(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE offers (
+        id TEXT PRIMARY KEY,
+        merchantName TEXT NOT NULL,
+        description TEXT NOT NULL,
+        terms TEXT,
+        category TEXT NOT NULL,
+        expiryDate TEXT,
+        url TEXT
+    );
+
+    CREATE TABLE tracked_offers (
+        id TEXT PRIMARY KEY,
+        offerId TEXT NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
+        cardId TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+        status TEXT NOT NULL,
+        dateAdded TEXT NOT NULL,
+        UNIQUE (offerId, cardId)
+    );
+
+    CREATE TABLE rewards (
+        id TEXT PRIMARY KEY,
+        cardTypeId TEXT NOT NULL REFERENCES card_types(id) ON DELETE CASCADE,
+        category TEXT NOT NULL,
+        rewardValue REAL NOT NULL,
+        rewardUnit TEXT NOT NULL,
+        description TEXT
+    );
+`;
+
+// Version 1 is the schema above. Databases written before versioning have the
+// same tables without the constraints and with cards.card_type_id, so they are
+// rebuilt. Rows the new constraints reject (a tracked offer whose card or offer
+// is gone, a second tracked offer for the same card and offer, a reward whose
+// card type is gone) were never shown by the app and are not copied.
+function migrateToV1(db) {
+    const existing = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").pluck().all());
+    const legacy = TABLES.filter(table => existing.has(table));
+
+    for (const table of legacy) {
+        db.exec(`ALTER TABLE ${table} RENAME TO legacy_${table}`);
+    }
+    db.exec(SCHEMA);
+
+    const has = (table, column) => db.pragma(`table_info(legacy_${table})`).some(info => info.name === column);
+    const copies = {
+        card_types: () => `
+            INSERT INTO card_types (id, name, issuer, color)
+            SELECT id, name, issuer, ${has('card_types', 'color') ? "COALESCE(color, '#374151')" : "'#374151'"}
+            FROM legacy_card_types`,
+        cards: () => `
+            INSERT INTO cards (id, name, issuer, last4, color, cardHolder, notes, cardTypeId)
+            SELECT id, name, issuer, last4, color, cardHolder, notes,
+                   ${has('cards', 'card_type_id') ? '(SELECT id FROM card_types WHERE id = card_type_id)' : 'NULL'}
+            FROM legacy_cards`,
+        offers: () => `
+            INSERT INTO offers (id, merchantName, description, terms, category, expiryDate, url)
+            SELECT id, merchantName, description, terms, category, expiryDate, ${has('offers', 'url') ? 'url' : 'NULL'}
+            FROM legacy_offers`,
+        tracked_offers: () => `
+            INSERT OR IGNORE INTO tracked_offers (id, offerId, cardId, status, dateAdded)
+            SELECT id, offerId, cardId, status, dateAdded
+            FROM legacy_tracked_offers
+            WHERE offerId IN (SELECT id FROM offers) AND cardId IN (SELECT id FROM cards)
+            ORDER BY rowid`,
+        rewards: () => `
+            INSERT INTO rewards (id, cardTypeId, category, rewardValue, rewardUnit, description)
+            SELECT id, cardTypeId, category, rewardValue, rewardUnit, description
+            FROM legacy_rewards
+            WHERE cardTypeId IN (SELECT id FROM card_types)`,
+    };
+
+    for (const table of legacy) {
+        db.exec(copies[table]());
+    }
+    for (const table of legacy) {
+        db.exec(`DROP TABLE legacy_${table}`);
     }
 }
 
-const defaultDataDir = path.join(os.homedir(), '.ccmot');
-const dbPath = customDbPath || path.join(defaultDataDir, 'database.sqlite');
-ensureDir(path.dirname(dbPath));
+// MIGRATIONS[n] upgrades a database from user_version n to n + 1.
+const MIGRATIONS = [migrateToV1];
 
-console.log('Database path:', dbPath);
+function migrate(db) {
+    const version = db.pragma('user_version', { simple: true });
+    if (version >= MIGRATIONS.length) return;
 
-const db = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-        console.error('Error opening database', err.message);
-    } else {
-        console.log('Connected to the SQLite database.');
-        db.run('PRAGMA foreign_keys = ON', (pragmaErr) => {
-            if (pragmaErr) {
-                console.error('Error enabling foreign keys', pragmaErr.message);
-                return;
-            }
-            initDb();
-        });
+    const hasData = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' LIMIT 1").get();
+    if (hasData && !db.memory) {
+        const backupPath = `${db.name}.v${version}.bak`;
+        fs.copyFileSync(db.name, backupPath);
+        console.log(`Database backed up to ${backupPath} before migrating`);
     }
-});
 
-function initDb() {
-    db.serialize(() => {
-        db.run(`CREATE TABLE IF NOT EXISTS cards (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            issuer TEXT NOT NULL,
-            last4 TEXT NOT NULL,
-            color TEXT NOT NULL,
-            cardHolder TEXT,
-            notes TEXT,
-            card_type_id TEXT,
-            FOREIGN KEY(card_type_id) REFERENCES card_types(id)
-        )`);
-
-        db.run(`CREATE TABLE IF NOT EXISTS offers (
-            id TEXT PRIMARY KEY,
-            merchantName TEXT NOT NULL,
-            description TEXT NOT NULL,
-            terms TEXT,
-            category TEXT NOT NULL,
-            expiryDate TEXT,
-            url TEXT
-        )`);
-
-        db.run(`CREATE TABLE IF NOT EXISTS tracked_offers (
-            id TEXT PRIMARY KEY,
-            offerId TEXT NOT NULL,
-            cardId TEXT NOT NULL,
-            status TEXT NOT NULL,
-            dateAdded TEXT NOT NULL,
-            FOREIGN KEY(offerId) REFERENCES offers(id) ON DELETE CASCADE,
-            FOREIGN KEY(cardId) REFERENCES cards(id) ON DELETE CASCADE
-        )`);
-
-        db.run(`CREATE TABLE IF NOT EXISTS card_types (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            issuer TEXT NOT NULL,
-            color TEXT NOT NULL
-        )`);
-
-        db.run(`CREATE TABLE IF NOT EXISTS rewards (
-            id TEXT PRIMARY KEY,
-            cardTypeId TEXT NOT NULL,
-            category TEXT NOT NULL,
-            rewardValue REAL NOT NULL,
-            rewardUnit TEXT NOT NULL,
-            description TEXT,
-            FOREIGN KEY(cardTypeId) REFERENCES card_types(id) ON DELETE CASCADE
-        )`);
-
-        ensureColumn('cards', 'card_type_id', 'TEXT');
-        ensureColumn('card_types', 'color', 'TEXT');
-    });
+    // SQLite ignores this pragma inside a transaction, and the rebuild needs it off.
+    db.pragma('foreign_keys = OFF');
+    db.transaction(() => {
+        for (let from = version; from < MIGRATIONS.length; from++) {
+            MIGRATIONS[from](db);
+        }
+        db.pragma(`user_version = ${MIGRATIONS.length}`);
+    })();
+    console.log(`Database migrated from version ${version} to ${MIGRATIONS.length}`);
 }
 
-function ensureColumn(tableName, columnName, definition) {
-    db.all(`PRAGMA table_info(${tableName})`, (err, rows) => {
-        if (err) {
-            console.error(`Error checking ${tableName}.${columnName}`, err);
-            return;
-        }
-
-        if (!rows.some(row => row.name === columnName)) {
-            console.log(`Migrating: Adding ${columnName} to ${tableName} table`);
-            db.run(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
-        }
-    });
+function openDatabase(dbPath = process.env.CCMOT_DB_PATH || DEFAULT_DB_PATH) {
+    if (dbPath !== ':memory:') {
+        fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    }
+    const db = new Database(dbPath);
+    migrate(db);
+    db.pragma('foreign_keys = ON');
+    return db;
 }
 
-module.exports = db;
+module.exports = { openDatabase };
