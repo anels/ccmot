@@ -48,7 +48,8 @@ interface AppState extends AppData {
 // Optimistic updates are discarded by the refetch, so tell the user the change was lost.
 const reportFailure = async (message: string, error: unknown) => {
     console.error(`${message}:`, error);
-    useStore.setState({ error: `${message}. The change was not saved.` });
+    const detail = error instanceof Error && error.message ? ` (${error.message})` : '';
+    useStore.setState({ error: `${message}${detail}. The change was not saved.` });
     await useStore.getState().refetchData();
 };
 

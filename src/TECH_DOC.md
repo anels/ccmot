@@ -13,25 +13,25 @@ Located in `src/lib/store.ts`.
 - **Optimistic Updates**: Some actions update the UI immediately while waiting for server confirmation.
 
 ### 2. Backend API (`server/`)
-A lightweight Express server managing a SQLite database (`server/database.sqlite`).
+A lightweight Express server managing a SQLite database (`~/.ccmot/database.sqlite`, or `CCMOT_DB_PATH`) through better-sqlite3.
 
 #### Endpoints
 - **Initial Data**: `GET /api/initial-data` (Bulk fetch for efficient startup).
-- **Cards**: `POST /api/cards`, `PUT /api/cards/:id`, `DELETE /api/cards/:id`.
-- **Offers**: CRUD for offers.
-- **Tracked Offers**: CRUD for tracking relationships.
-- **Logging**: Uses `morgan` for HTTP request logging and custom logs for database operations.
-- **Architecture**: Endpoints use `async/await` and `Promise` patterns for reliable data handling (refactored from callbacks).
+- **Resources**: `cards`, `offers`, `tracked-offers`, `card-types`, `rewards`. Each has `GET /api/<resource>`, `POST /api/<resource>`, `PUT /api/<resource>/:id` (updates only the fields sent) and `DELETE /api/<resource>/:id`, generated from the `RESOURCES` table in `server/app.js`.
+- **Import**: `POST /api/import` replaces all data in one transaction.
+- **Errors**: `{ "error": "..." }` with 400 (validation or constraint failure), 404 (unknown id) or 500.
+- **Logging**: Uses `morgan` for HTTP request logging; request bodies are not logged.
 
 #### Database Schema
-- **`cards`**: `id`, `name`, `issuer`, `last4`, `color`, `cardHolder`, `notes`, `card_type_id`.
+- **`cards`**: `id`, `name`, `issuer`, `last4`, `color`, `cardHolder`, `notes`, `cardTypeId`.
 - **`offers`**: `id`, `merchantName`, `description`, `terms`, `category`, `expiryDate`, `url`.
 - **`tracked_offers`**:
-    - Links `offerId` and `cardId`.
+    - Links `offerId` and `cardId`; one row per pair.
     - `status`: 'Added' | 'Used' | 'Awarded' | 'Expired'.
 - **`card_types`**: `id`, `name`, `issuer`, `color`.
 - **`rewards`**: `id`, `cardTypeId`, `category`, `rewardValue`, `rewardUnit`, `description`.
-- SQLite foreign keys are enabled on connection; tracked offers cascade when cards/offers are deleted.
+- Foreign keys are enforced: tracked offers are deleted with their card or offer, rewards with their card type, and a card is unlinked when its card type is deleted.
+- The schema version is stored in `PRAGMA user_version`. `server/db.js` runs pending migrations on startup and first copies the file to `<db>.v<n>.bak`.
 
 ### 3. Key Components
 - **`Dashboard.tsx`**: Main view.

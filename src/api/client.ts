@@ -5,7 +5,8 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 async function fetchJson<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
     if (!response.ok) {
-        throw new Error(`API Error: ${response.statusText}`);
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error || response.statusText || `HTTP ${response.status}`);
     }
     return response.json();
 }
@@ -26,14 +27,11 @@ export const api = {
     importData: (data: AppData) => fetchJson('/import', jsonRequest('POST', data)),
 
     // Cards
-    addCard: (card: CreditCard) => fetchJson('/cards', jsonRequest('POST', {
-        ...card,
-        card_type_id: card.cardTypeId
-    })),
-    updateCard: (id: string, updates: Partial<CreditCard>) => fetchJson(`/cards/${id}`, jsonRequest('PUT', {
-        ...updates,
-        card_type_id: updates.cardTypeId
-    })),
+    addCard: (card: CreditCard) => fetchJson('/cards', jsonRequest('POST', card)),
+    // JSON drops undefined, so send null to clear the card type.
+    updateCard: (id: string, updates: Partial<CreditCard>) => fetchJson(`/cards/${id}`, jsonRequest('PUT',
+        'cardTypeId' in updates ? { ...updates, cardTypeId: updates.cardTypeId ?? null } : updates
+    )),
     deleteCard: (id: string) => fetchJson(`/cards/${id}`, deleteRequest),
 
     // Offers
@@ -55,13 +53,6 @@ export const api = {
     deleteCardType: (id: string) => fetchJson(`/card-types/${id}`, deleteRequest),
 
     // Rewards
-    addReward: (reward: Reward) => fetchJson('/rewards', jsonRequest('POST', {
-        id: reward.id,
-        card_type_id: reward.cardTypeId,
-        category: reward.category,
-        reward_value: reward.rewardValue,
-        reward_unit: reward.rewardUnit,
-        description: reward.description
-    })),
+    addReward: (reward: Reward) => fetchJson('/rewards', jsonRequest('POST', reward)),
     deleteReward: (id: string) => fetchJson(`/rewards/${id}`, deleteRequest),
 };
