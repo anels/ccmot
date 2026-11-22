@@ -1,6 +1,6 @@
 import React from 'react';
-import { RotateCcw, ArrowRight } from 'lucide-react';
-import { format, isValid, differenceInDays } from 'date-fns';
+import { RotateCcw, ArrowRight, Trash2 } from 'lucide-react';
+import { format, isValid, differenceInCalendarDays } from 'date-fns';
 import type { Offer, CreditCard as CreditCardType, TrackedOffer, OfferStatus } from '../types';
 import { cn, isOfferExpired, parseOfferDate } from '../lib/utils';
 import { CATEGORY_ICONS, STATUS_COLORS, STATUS_DOT, NEXT_STATUS, getCategoryColor } from '../lib/constants';
@@ -8,9 +8,10 @@ import { CATEGORY_ICONS, STATUS_COLORS, STATUS_DOT, NEXT_STATUS, getCategoryColo
 interface TrackedOfferCardProps {
     item: TrackedOffer & { offer?: Offer; card?: CreditCardType };
     onUpdateStatus: (id: string, status: OfferStatus) => void;
+    onDelete: (id: string) => void;
 }
 
-export const TrackedOfferCard: React.FC<TrackedOfferCardProps> = ({ item, onUpdateStatus }) => {
+export const TrackedOfferCard: React.FC<TrackedOfferCardProps> = ({ item, onUpdateStatus, onDelete }) => {
     if (!item.offer || !item.card) return null;
 
     const CategoryIcon = CATEGORY_ICONS[item.offer.category] || CATEGORY_ICONS['Other'];
@@ -20,7 +21,7 @@ export const TrackedOfferCard: React.FC<TrackedOfferCardProps> = ({ item, onUpda
     const displayStatus: OfferStatus = isExpired ? 'Expired' : item.status;
     const expiryDate = parseOfferDate(item.offer.expiryDate);
     const validDate = isValid(expiryDate);
-    const daysLeft = validDate ? differenceInDays(expiryDate, new Date()) : null;
+    const daysLeft = validDate ? differenceInCalendarDays(expiryDate, new Date()) : null;
     const expirySoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 7;
 
     return (
@@ -100,8 +101,9 @@ export const TrackedOfferCard: React.FC<TrackedOfferCardProps> = ({ item, onUpda
                             : 'Invalid date'}
                     </div>
 
-                    {!isExpired && (
-                        <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1">
+                        {!isExpired && (
+                            <>
                             {(displayStatus === 'Added' || displayStatus === 'Used') && (
                                 <button
                                     onClick={() => onUpdateStatus(item.id, NEXT_STATUS[displayStatus])}
@@ -121,8 +123,17 @@ export const TrackedOfferCard: React.FC<TrackedOfferCardProps> = ({ item, onUpda
                                     <RotateCcw className="w-3 h-3" />
                                 </button>
                             )}
-                        </div>
-                    )}
+                            </>
+                        )}
+                        <button
+                            onClick={() => onDelete(item.id)}
+                            className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
+                            title="Stop tracking"
+                            aria-label="Stop tracking"
+                        >
+                            <Trash2 className="w-3 h-3" />
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

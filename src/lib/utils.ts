@@ -33,8 +33,9 @@ export function parseOfferDate(dateStr: string): Date {
 }
 
 export function isOfferExpired(offer: Offer, status?: OfferStatus): boolean {
-    // If explicit status is expired, it's expired
     if (status === 'Expired') return true;
+    // A used offer stays visible while its reward is pending, even past the expiry date.
+    if (status === 'Used' || status === 'Awarded') return false;
 
     // Check date
     const expiryDate = parseOfferDate(offer.expiryDate);

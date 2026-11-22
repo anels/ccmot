@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useDialogLayer } from '../hooks/useDialogLayer';
 
 interface ConfirmDialogProps {
     isOpen: boolean;
@@ -23,12 +24,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     cancelText = 'Cancel',
     variant = 'danger'
 }) => {
-    useEffect(() => {
-        if (!isOpen) return;
-        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [isOpen, onClose]);
+    useDialogLayer(isOpen, onClose);
 
     if (!isOpen) return null;
 

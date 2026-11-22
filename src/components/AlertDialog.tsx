@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { CheckCircle2, AlertCircle, X, Info, AlertTriangle } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useDialogLayer } from '../hooks/useDialogLayer';
 
 interface AlertDialogProps {
     isOpen: boolean;
@@ -17,12 +18,7 @@ export const AlertDialog: React.FC<AlertDialogProps> = ({
     message,
     variant = 'info'
 }) => {
-    useEffect(() => {
-        if (!isOpen) return;
-        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [isOpen, onClose]);
+    useDialogLayer(isOpen, onClose);
 
     if (!isOpen) return null;
 

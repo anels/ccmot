@@ -257,7 +257,7 @@ const Dashboard: React.FC = () => {
                         .filter(r => r.cardType)
                         .sort((a, b) => b.rewardValue - a.rewardValue);
 
-                    const activeOffers = categoryFilteredTrackedOffers.filter(
+                    const activeOffers = filteredTrackedOffers.filter(
                         o => o.status === 'Added' && o.offer?.category === category
                     );
 
@@ -340,6 +340,7 @@ const Dashboard: React.FC = () => {
                                                     key={item.id}
                                                     item={item}
                                                     onUpdateStatus={updateOfferStatus}
+                                                    onDelete={setDeleteId}
                                                 />
                                             ))}
                                         </div>
@@ -375,7 +376,7 @@ const Dashboard: React.FC = () => {
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                             {filteredTrackedOffers.filter(o => o.status === 'Used').map((item) => (
-                                <TrackedOfferCard key={item.id} item={item} onUpdateStatus={updateOfferStatus} />
+                                <TrackedOfferCard key={item.id} item={item} onUpdateStatus={updateOfferStatus} onDelete={setDeleteId} />
                             ))}
                         </div>
                     </section>
@@ -392,7 +393,7 @@ const Dashboard: React.FC = () => {
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                             {filteredTrackedOffers.filter(o => o.status === 'Awarded').map((item) => (
-                                <TrackedOfferCard key={item.id} item={item} onUpdateStatus={updateOfferStatus} />
+                                <TrackedOfferCard key={item.id} item={item} onUpdateStatus={updateOfferStatus} onDelete={setDeleteId} />
                             ))}
                         </div>
                     </section>

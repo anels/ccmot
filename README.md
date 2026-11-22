@@ -34,6 +34,8 @@ This application uses environment variables for configuration. You can create a 
 |----------|-------------|---------|
 | `VITE_API_URL` | Base URL for the backend API | `http://localhost:3001/api` |
 | `CCMOT_DB_PATH` | SQLite database path used by the backend | `~/.ccmot/database.sqlite` |
+| `CCMOT_HOST` | Address the backend listens on. The API has no authentication, so only widen this on a trusted network | `127.0.0.1` |
+| `CCMOT_ALLOWED_ORIGINS` | Comma-separated browser origins allowed to call the API | Vite dev and preview on `localhost` / `127.0.0.1` |
 
 ## Technical Details
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS, Zustand.
