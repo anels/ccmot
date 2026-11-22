@@ -11,7 +11,7 @@ cd server && npm install && cd ..
 npm run dev:all          # frontend (5173) + backend (3001) concurrent
 npm run build            # tsc -b && vite build
 npm run lint             # eslint
-npm test                 # vitest: backend API and migration tests
+npm test                 # vitest: src/**/*.test.ts and server/test
 ```
 
 Single-process variants: `npm run dev` (frontend only), `npm run server`
@@ -73,6 +73,10 @@ different local file. Wipe that file to reset state.
 - **Card color contrast**: when rendering text over a user-picked card color
   (`card.color` hex), pass it through `getReadableTextColor()` for the
   inline `color` style. Hard-coded `text-white` fails on light user colors.
+- **Card type inheritance**: a card with a `cardTypeId` shows its type's
+  issuer and color. Render cards from `useCards()` (`src/hooks/useCards.ts`),
+  not from `useStore().cards`, which holds the stored values and is for
+  writes and export only.
 - **Modal stacking**: `Modal`, `ConfirmDialog` and `AlertDialog` share
   `src/hooks/useDialogLayer.ts`, which keeps one stack of open dialogs for the
   body scroll-lock and gives Escape to the topmost one. A new dialog component

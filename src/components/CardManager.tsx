@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../lib/store';
+import { useCards } from '../hooks/useCards';
 import { useSearch } from '../hooks/useSearch';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Modal } from './Modal';
@@ -13,7 +14,8 @@ import { RewardConfig } from './RewardConfig';
 const CARD_SEARCH_FIELDS: (keyof CreditCard)[] = ['name', 'issuer', 'last4', 'cardHolder', 'notes'];
 
 const CardManager: React.FC = () => {
-    const { cards, cardTypes, addCard, updateCard, deleteCard, addCardType } = useStore();
+    const cards = useCards();
+    const { cardTypes, addCard, updateCard, deleteCard, addCardType } = useStore();
     const [activeTab, setActiveTab] = useState<'wallet' | 'config'>('wallet');
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isCreateTypeOpen, setIsCreateTypeOpen] = useState(false); // State for new type modal
