@@ -39,7 +39,7 @@ This application uses environment variables for configuration. You can create a 
 
 ## Technical Details
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS, Zustand.
-- **Backend**: Node.js, Express, SQLite, Morgan (logging).
+- **Backend**: Node.js, Express, SQLite (better-sqlite3), Morgan (logging).
 - **Communication**: REST API.
 
 For deep dive, see [TECH_DOC.md](./src/TECH_DOC.md).
