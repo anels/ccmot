@@ -1,10 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CardType, CreditCard, Offer } from '../types';
-import { isOfferExpired, parseOfferDate, resolveCards } from './utils';
-
-const offerExpiring = (expiryDate: string): Offer => ({
-    id: 'o1', merchantName: 'Best Buy', description: 'Spend $100, get $20', terms: '', category: 'Shopping', expiryDate,
-});
+import { describe, expect, it } from 'vitest';
+import type { CardType, CreditCard } from '../types';
+import { parseOfferDate, resolveCards } from './utils';
 
 describe('parseOfferDate', () => {
     it('reads a date as local midnight', () => {
@@ -21,38 +17,6 @@ describe('parseOfferDate', () => {
 
     it('returns an invalid date for an empty string', () => {
         expect(Number.isNaN(parseOfferDate('').getTime())).toBe(true);
-    });
-});
-
-describe('isOfferExpired', () => {
-    beforeEach(() => {
-        vi.useFakeTimers();
-        vi.setSystemTime(new Date(2030, 0, 31, 15, 0, 0));
-    });
-
-    afterEach(() => {
-        vi.useRealTimers();
-    });
-
-    it('keeps an offer active through its expiry date', () => {
-        expect(isOfferExpired(offerExpiring('2030-01-31'))).toBe(false);
-    });
-
-    it('expires an offer the day after its expiry date', () => {
-        expect(isOfferExpired(offerExpiring('2030-01-30'))).toBe(true);
-    });
-
-    it('keeps a used or awarded offer after its expiry date', () => {
-        expect(isOfferExpired(offerExpiring('2030-01-30'), 'Used')).toBe(false);
-        expect(isOfferExpired(offerExpiring('2030-01-30'), 'Awarded')).toBe(false);
-    });
-
-    it('treats the Expired status as expired whatever the date', () => {
-        expect(isOfferExpired(offerExpiring('2031-01-01'), 'Expired')).toBe(true);
-    });
-
-    it('does not expire an offer without a date', () => {
-        expect(isOfferExpired(offerExpiring(''))).toBe(false);
     });
 });
 

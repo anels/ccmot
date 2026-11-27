@@ -17,11 +17,14 @@ export interface Offer {
     description: string; // e.g., "Spend $50, get $10 back"
     terms: string; // Detailed terms
     expiryDate: string; // ISO Date string
-    category: OfferCategory;
+    category: Category;
 }
 
 export type OfferCategory = 'Travel' | 'Dining' | 'Shopping' | 'Entertainment' | 'Service' | 'Grocery Stores' | 'Gas/EV charging' | 'TV, Internet & Streaming Services' | 'Home Utilities' | 'Other';
 
+
+/** A built-in category or one of the person's own. */
+export type Category = OfferCategory | (string & {});
 
 export type OfferStatus = 'Added' | 'Used' | 'Awarded' | 'Expired';
 
@@ -51,7 +54,7 @@ export interface CardType {
 export interface Reward {
     id: string;
     cardTypeId: string;
-    category: OfferCategory | string; // Allow string for custom categories validation
+    category: Category;
     rewardValue: number;
     rewardUnit: '%' | 'x' | 'points';
     description: string;

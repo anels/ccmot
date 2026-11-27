@@ -29,8 +29,15 @@ different local file. Wipe that file to reset state.
 - `src/lib/store.ts` — Zustand store. **Async** actions hit the backend first;
   `initialize()` runs once from `App.tsx` on mount via
   `GET /api/initial-data`.
-- `src/lib/utils.ts` — `cn`, `parseOfferDate`, `isOfferExpired`,
-  `getReadableTextColor`, `generateOffersExport`.
+- `src/lib/lifecycle.ts` — what a tracked offer is now and what may be done
+  with it: effective status, next status, reset, days left, whether an offer's
+  date has passed. Views ask it; they do not compare dates or statuses
+  themselves.
+- `src/lib/dashboard.ts` — `buildDashboardView` and `buildOffersExport`, the
+  pure derivations behind the dashboard. `Dashboard.tsx` only renders them.
+- `src/lib/utils.ts` — `cn`, `parseOfferDate`, `getReadableTextColor`,
+  `resolveCards`.
+- `GLOSSARY.md` — the domain terms. Use them in code and UI text.
 - `src/lib/constants.tsx` — Categories, issuer colors, **STATUS_COLORS**,
   **STATUS_DOT**, **CATEGORY_COLORS** + `getCategoryColor()`.
 - `src/api/client.ts` — fetch wrapper, base URL `VITE_API_URL`
@@ -67,9 +74,9 @@ different local file. Wipe that file to reset state.
   `new Date(offer.expiryDate)`. `YYYY-MM-DD` strings parsed by the Date
   constructor are UTC midnight and render one day off in negative timezones.
   `parseOfferDate` returns local midnight.
-- **Category icon lookup**: use `CATEGORY_ICONS[cat] || CATEGORY_ICONS['Other']`,
-  NOT `CATEGORY_ICONS[cat || 'Other']`. The second form returns `undefined`
-  for user-created custom categories and crashes React.
+- **Categories are open strings**: people add their own. Render icons with
+  `<CategoryIcon category={...}>` and colors with `getCategoryColor()`, which
+  both fall back to 'Other'. List them with `listCategories()`.
 - **Card color contrast**: when rendering text over a user-picked card color
   (`card.color` hex), pass it through `getReadableTextColor()` for the
   inline `color` style. Hard-coded `text-white` fails on light user colors.

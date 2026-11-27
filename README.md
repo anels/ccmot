@@ -6,9 +6,9 @@ A personal finance dashboard to track credit card offers, rewards, and expiratio
 
 ### 🎯 Dashboard
 - **Tracked Offers**: View all your active offers linked to specific cards.
-- **Smart Status**: Offers automatically mark themselves as **Expired** when the date passes.
+- **Smart Status**: An offer still unused after its date moves to an **Expired** section, where it can be marked used if the purchase was in time. Used and awarded offers never expire.
 - **Compact Cards**: Clean, single-line display of card details (Issuer, Last 4, Holder) with smart masking.
-- **Unified Search**: Quickly find any offer or card by name, merchant, or description.
+- **Unified Search**: Find offers by merchant, description, terms or category, tracked offers also by card, and rewards by card type.
 
 ### 💳 Card Management
 - **Add/Edit Cards**: Store your credit cards with custom colors and optional notes.
@@ -42,7 +42,7 @@ This application uses environment variables for configuration. You can create a 
 - **Backend**: Node.js, Express, SQLite (better-sqlite3), Morgan (logging).
 - **Communication**: REST API.
 
-For deep dive, see [TECH_DOC.md](./src/TECH_DOC.md).
+For deep dive, see [TECH_DOC.md](./src/TECH_DOC.md). Domain terms are defined in [GLOSSARY.md](./GLOSSARY.md).
 
 ## Getting Started
 

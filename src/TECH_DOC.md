@@ -35,12 +35,12 @@ A lightweight Express server managing a SQLite database (`~/.ccmot/database.sqli
 
 ### 3. Key Components
 - **`Dashboard.tsx`**: Main view.
-    - Displays `TrackedOfferCard` list (Active & Expired).
-    - Displays `CatalogOfferCard` list (Available offers).
-    - Integrates `useSearch` for filtering all offers.
+    - Renders what `lib/dashboard.ts` builds: category sections, then used, awarded and expired offers.
+    - Displays `CatalogOfferCard` list for a search or a chosen category. Expired offers cannot be tracked.
+    - Exports the wallet (`buildOffersExport`) through `lib/save-file.ts`.
 - **`TrackedOfferCard.tsx`**: 
     - Compact card layout (Single line for details, smart masking).
-    - Visual cues for **Expired** status (Faded, strikethrough).
+    - Visual cues for **Expired** status (Faded, strikethrough). Status and buttons come from `lib/lifecycle.ts`.
 - **`CatalogOfferCard.tsx`**:
     - Displays distinct offer details.
     - Allows tracking an offer to specific cards.
@@ -49,11 +49,9 @@ A lightweight Express server managing a SQLite database (`~/.ccmot/database.sqli
     - Search functionality (hides when form is open).
 - **`OfferManager.tsx`**:
     - Manage available offers.
-    - Auto-assigns categories (e.g., 'Shopping', 'Travel').
 
 ### 4. Custom Hooks & Clients
-- **`useSearch`**: Generic search filter.
-- **`useSearch`**: Generic search filter.
+- **`useSearch`**: Generic search filter over `lib/search.ts` matching.
 - **`api/client.ts`**: Centralized HTTP client using `fetch`. Configurable via `VITE_API_URL` (defaults to `http://localhost:3001/api`).
 
 ## Recent Improvements

@@ -1,31 +1,16 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
+import { matchesTerm } from '../lib/search';
 
-export function useSearch<T>(items: T[], searchFields: (keyof T | ((item: T) => string))[]) {
+export function useSearch<T>(items: T[], searchFields: (keyof T)[]) {
     const [searchTerm, setSearchTerm] = useState('');
 
-    const getFieldValue = useCallback((item: T, field: keyof T | ((item: T) => string)): string | undefined => {
-        if (typeof field === 'function') {
-            return field(item);
-        }
-        const fieldValue = item[field];
-        if (typeof fieldValue === 'string') {
-            return fieldValue;
-        }
-        return undefined;
-    }, []);
-
-    const filteredItems = useMemo(() => {
-        if (!searchTerm) return items;
-
-        const lowerTerm = searchTerm.toLowerCase();
-
-        return items.filter(item => {
-            return searchFields.some(field => {
-                const value = getFieldValue(item, field);
-                return value ? value.toLowerCase().includes(lowerTerm) : false;
-            });
-        });
-    }, [items, searchTerm, searchFields, getFieldValue]);
+    const filteredItems = useMemo(() => items.filter(item => matchesTerm(
+        searchFields.map(field => {
+            const value = item[field];
+            return typeof value === 'string' ? value : undefined;
+        }),
+        searchTerm,
+    )), [items, searchTerm, searchFields]);
 
     return {
         searchTerm,

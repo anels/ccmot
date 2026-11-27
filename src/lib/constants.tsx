@@ -1,5 +1,5 @@
 import type { CardIssuer, OfferCategory, OfferStatus } from '../types';
-import { Plane, Utensils, ShoppingBag, Clapperboard, Briefcase, HelpCircle, LayoutGrid } from 'lucide-react';
+import { Plane, Utensils, ShoppingBag, Clapperboard, Briefcase, HelpCircle } from 'lucide-react';
 
 export const ISSUERS: CardIssuer[] = ['Amex', 'Chase', 'Citi', 'Bank of America', 'US Bank', 'Other'];
 
@@ -40,11 +40,6 @@ export const CATEGORY_ICONS: Record<OfferCategory, React.ElementType> = {
     'Other': HelpCircle,
 };
 
-export const DASHBOARD_CATEGORY_ICONS: Record<OfferCategory | 'All', React.ElementType> = {
-    'All': LayoutGrid,
-    ...CATEGORY_ICONS
-};
-
 /**
  * Per-category color tokens.
  * - `tile`: soft bg + colored text — used for icon chips, badges
@@ -70,7 +65,7 @@ export const CATEGORY_COLORS: Record<OfferCategory | 'All', CategoryColor> = {
 };
 
 export const getCategoryColor = (category: string): CategoryColor => {
-    return CATEGORY_COLORS[category as OfferCategory] || CATEGORY_COLORS['Other'];
+    return CATEGORY_COLORS[Object.hasOwn(CATEGORY_COLORS, category) ? category as OfferCategory : 'Other'];
 };
 
 export const STATUS_COLORS: Record<OfferStatus, string> = {
@@ -85,11 +80,4 @@ export const STATUS_DOT: Record<OfferStatus, string> = {
     'Used': 'bg-amber-500',
     'Awarded': 'bg-emerald-500',
     'Expired': 'bg-zinc-400 dark:bg-zinc-600',
-};
-
-export const NEXT_STATUS: Record<OfferStatus, OfferStatus> = {
-    'Added': 'Used',
-    'Used': 'Awarded',
-    'Awarded': 'Added',
-    'Expired': 'Added'
 };

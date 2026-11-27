@@ -5,6 +5,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { AlertDialog } from './AlertDialog';
 import { Download, Upload, Save, AlertTriangle, Moon, Sun, Monitor } from 'lucide-react';
 import type { AppData } from '../types';
+import { downloadJson } from '../lib/save-file';
 
 interface PendingImport {
     data: Partial<AppData> & {
@@ -33,16 +34,7 @@ const Settings: React.FC = () => {
     };
 
     const handleExport = () => {
-        const data = exportData();
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `ccmot-backup-${new Date().toISOString()}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadJson(`ccmot-backup-${new Date().toISOString()}.json`, exportData());
     };
 
     const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {

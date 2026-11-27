@@ -8,18 +8,20 @@ import { PageHeader } from './PageHeader';
 import type { Offer } from '../types';
 import { Trash2, Calendar, Info, CreditCard, Edit2 } from 'lucide-react';
 import { format } from 'date-fns';
-import { cn, isOfferExpired, parseOfferDate } from '../lib/utils';
-import { CATEGORIES, CATEGORY_ICONS, getCategoryColor } from '../lib/constants';
+import { cn } from '../lib/utils';
+import { formatExpiry, getOfferExpiry } from '../lib/lifecycle';
+import { OFFER_SEARCH_FIELDS } from '../lib/search';
+import { getCategoryColor } from '../lib/constants';
+import { listCategories } from '../lib/categories';
+import { CategoryIcon } from './CategoryIcon';
 
 type DateInputWithPicker = HTMLInputElement & {
     showPicker?: () => void;
 };
 
-const OFFER_SEARCH_FIELDS: (keyof Offer)[] = ['merchantName', 'description', 'terms', 'category'];
-
 const OfferManager: React.FC = () => {
     const cards = useCards();
-    const { offers, trackedOffers, addOffer, updateOffer, deleteOffer, trackOffer, deleteTrackedOffer } = useStore();
+    const { offers, trackedOffers, rewards, addOffer, updateOffer, deleteOffer, trackOffer, deleteTrackedOffer } = useStore();
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
@@ -68,11 +70,20 @@ const OfferManager: React.FC = () => {
         setErrors({});
     };
 
+    // Past its date, an offer keeps the cards it is already on but takes no new ones.
+    const { isPast: isFormPast } = getOfferExpiry(formData);
+    const trackedCardIds = new Set(trackedOffers.filter(t => t.offerId === editingId).map(t => t.cardId));
+    const canSelectCard = (cardId: string) => !isFormPast || trackedCardIds.has(cardId);
+    const isCardRequired = !isFormPast || trackedCardIds.size > 0;
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        // Cards picked before the date was moved into the past are dropped
+        const selectedCardIds = Array.from(selectedCards).filter(canSelectCard);
+
         // Validate card selection
-        if (selectedCards.size === 0) {
+        if (isCardRequired && selectedCardIds.length === 0) {
             setErrors({ cards: 'Please select at least one card to track this offer.' });
             return;
         }
@@ -85,17 +96,17 @@ const OfferManager: React.FC = () => {
             offerId = await addOffer(formData);
         }
 
-        if (offerId) {
-            const selectedCardIds = Array.from(selectedCards);
-            const existingTrackedOffers = trackedOffers.filter(t => t.offerId === offerId);
+        // The add failed and the store has reported it; keep the form so the input is not lost
+        if (!offerId) return;
 
-            await Promise.all([
-                ...existingTrackedOffers
-                    .filter(t => !selectedCards.has(t.cardId))
-                    .map(t => deleteTrackedOffer(t.id)),
-                ...selectedCardIds.map(cardId => trackOffer(offerId, cardId)),
-            ]);
-        }
+        const existingTrackedOffers = trackedOffers.filter(t => t.offerId === offerId);
+
+        await Promise.all([
+            ...existingTrackedOffers
+                .filter(t => !selectedCards.has(t.cardId))
+                .map(t => deleteTrackedOffer(t.id)),
+            ...selectedCardIds.map(cardId => trackOffer(offerId, cardId)),
+        ]);
 
         resetForm();
     };
@@ -200,8 +211,7 @@ const OfferManager: React.FC = () => {
                         <div>
                             <label className="block text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">Category</label>
                             <div className="grid grid-cols-3 gap-1.5">
-                                {CATEGORIES.map((cat) => {
-                                    const Icon = CATEGORY_ICONS[cat];
+                                {listCategories(offers, rewards).map((cat) => {
                                     const cc = getCategoryColor(cat);
                                     const active = formData.category === cat;
                                     return (
@@ -216,7 +226,7 @@ const OfferManager: React.FC = () => {
                                                     : "border-border bg-card hover:bg-accent text-muted-foreground"
                                             )}
                                         >
-                                            <Icon className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+                                            <CategoryIcon category={cat} className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
                                             <span className="text-[11px] font-medium truncate">{cat}</span>
                                         </button>
                                     );
@@ -249,44 +259,56 @@ const OfferManager: React.FC = () => {
                     {/* Card Selection */}
                     <div className="pt-4 border-t border-border">
                         <label className="block text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">
-                            Track on Cards <span className="text-destructive">*</span>
+                            Track on Cards {isCardRequired && <span className="text-destructive">*</span>}
                         </label>
+                        {isFormPast && (
+                            <p className="text-xs text-muted-foreground mb-2">
+                                The expiry date has passed, so this offer can't be added to more cards.
+                            </p>
+                        )}
                         {cards.length === 0 ? (
                             <p className="text-sm text-muted-foreground">No cards available. Add cards in the Cards tab first.</p>
                         ) : (
                             <div className="space-y-2">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                                    {cards.map(card => (
-                                        <div
-                                            key={card.id}
-                                            onClick={() => {
-                                                toggleCardSelection(card.id);
-                                                setErrors(prev => ({ ...prev, cards: undefined }));
-                                            }}
-                                            className={cn(
-                                                "flex items-center p-2.5 border rounded-md cursor-pointer transition-colors",
-                                                selectedCards.has(card.id)
-                                                    ? "bg-foreground/5 border-foreground"
-                                                    : "border-border bg-card hover:bg-accent",
-                                                errors.cards ? "border-destructive bg-destructive/5" : ""
-                                            )}
-                                        >
+                                    {cards.map(card => {
+                                        const selectable = canSelectCard(card.id);
+                                        const selected = selectable && selectedCards.has(card.id);
+                                        return (
                                             <div
-                                                className="w-1 h-8 rounded-sm mr-2.5 shrink-0"
-                                                style={{ backgroundColor: card.color || '#666' }}
-                                            />
-                                            <CreditCard className="w-3.5 h-3.5 text-muted-foreground mr-2 shrink-0" />
-                                            <div className="flex-1 min-w-0">
-                                                <div className="text-xs font-medium truncate">{card.name}</div>
-                                                <div className="text-[11px] text-muted-foreground font-mono">
-                                                    {card.issuer} · •••• {card.last4}
+                                                key={card.id}
+                                                aria-disabled={!selectable}
+                                                onClick={() => {
+                                                    if (!selectable) return;
+                                                    toggleCardSelection(card.id);
+                                                    setErrors(prev => ({ ...prev, cards: undefined }));
+                                                }}
+                                                className={cn(
+                                                    "flex items-center p-2.5 border rounded-md transition-colors",
+                                                    selectable ? "cursor-pointer" : "cursor-not-allowed opacity-50",
+                                                    selected
+                                                        ? "bg-foreground/5 border-foreground"
+                                                        : cn("border-border bg-card", selectable && "hover:bg-accent"),
+                                                    errors.cards ? "border-destructive bg-destructive/5" : ""
+                                                )}
+                                            >
+                                                <div
+                                                    className="w-1 h-8 rounded-sm mr-2.5 shrink-0"
+                                                    style={{ backgroundColor: card.color || '#666' }}
+                                                />
+                                                <CreditCard className="w-3.5 h-3.5 text-muted-foreground mr-2 shrink-0" />
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-xs font-medium truncate">{card.name}</div>
+                                                    <div className="text-[11px] text-muted-foreground font-mono">
+                                                        {card.issuer} · •••• {card.last4}
+                                                    </div>
                                                 </div>
+                                                {selected && (
+                                                    <div className="dot bg-foreground shrink-0 ml-2" />
+                                                )}
                                             </div>
-                                            {selectedCards.has(card.id) && (
-                                                <div className="dot bg-foreground shrink-0 ml-2" />
-                                            )}
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                                 {errors.cards && (
                                     <p className="text-xs text-destructive">{errors.cards}</p>
@@ -301,29 +323,23 @@ const OfferManager: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {filteredOffers.map((offer) => {
-                    const CategoryIcon = CATEGORY_ICONS[offer.category] || CATEGORY_ICONS['Other'];
-                    const expiryDate = parseOfferDate(offer.expiryDate);
-                    const isValidDate = !isNaN(expiryDate.getTime());
-                    const isExpired = isOfferExpired(offer);
-                    const expiryLabel = offer.expiryDate && isValidDate
-                        ? format(expiryDate, 'MMM dd, yyyy')
-                        : 'No date';
+                    const { isPast } = getOfferExpiry(offer);
 
                     const cc = getCategoryColor(offer.category);
                     return (
                         <div key={offer.id} className={cn(
                             "bg-card border border-border rounded-lg overflow-hidden transition-colors relative group",
-                            isExpired ? "opacity-60 hover:opacity-100" : "hover:border-foreground/30"
+                            isPast ? "opacity-60 hover:opacity-100" : "hover:border-foreground/30"
                         )}>
                             <div className={cn("h-0.5 w-full", cc.bar)} aria-hidden />
                             <div className="p-4">
                             <div className="flex justify-between items-start mb-2 gap-3">
                                 <div className="flex items-start gap-2.5 min-w-0">
                                     <div className={cn("p-1.5 rounded-md shrink-0", cc.tile)}>
-                                        <CategoryIcon className="w-3.5 h-3.5" strokeWidth={2} />
+                                        <CategoryIcon category={offer.category} className="w-3.5 h-3.5" strokeWidth={2} />
                                     </div>
                                     <div className="min-w-0">
-                                        <h3 className={cn("text-sm font-semibold leading-tight tracking-tight truncate", isExpired && "line-through decoration-destructive/50")}>
+                                        <h3 className={cn("text-sm font-semibold leading-tight tracking-tight truncate", isPast && "line-through decoration-destructive/50")}>
                                             {offer.merchantName}
                                         </h3>
                                         <span className={cn("text-[10px] uppercase tracking-widest font-medium", cc.text)}>{offer.category}</span>
@@ -358,9 +374,9 @@ const OfferManager: React.FC = () => {
                                 <div className="flex items-center gap-1.5">
                                     <Calendar className="w-3 h-3" />
                                     <span className="uppercase tracking-wider opacity-70">EXP</span>
-                                    {expiryLabel}
+                                    {formatExpiry(offer)}
                                 </div>
-                                {isExpired && <span className="text-destructive uppercase tracking-wider">Expired</span>}
+                                {isPast && <span className="text-destructive uppercase tracking-wider">Expired</span>}
                             </div>
                             </div>
                         </div>
