@@ -83,6 +83,78 @@ describe('resources', () => {
     });
 });
 
+describe('saving an offer with its cards', () => {
+    const second = { ...card, id: 'c2', last4: '5678' };
+    const put = (id, body) => api.put(`/api/offers/${id}/with-cards`).send(body);
+    const create = (cardIds, fields = {}) =>
+        put('o2', { offer: { ...offer, id: 'o2', ...fields }, cardIds, isNew: true, seenRowIds: [] });
+    const change = (fields, cardIds, seenRowIds = ['x1']) =>
+        put('o1', { offer: fields, cardIds, isNew: false, seenRowIds });
+
+    beforeEach(async () => {
+        await api.post('/api/import').send({ ...backup(), cards: [card, second], trackedOffers: [{ ...tracked, status: 'Used' }] }).expect(200);
+    });
+
+    it('creates an offer on the chosen cards as added', async () => {
+        const { body } = await create(['c1', 'c2', 'c2']).expect(200);
+
+        expect(body.data.offer).toEqual({ ...offer, id: 'o2' });
+        expect(body.data.trackedOffers.map(row => [row.cardId, row.status])).toEqual([['c1', 'Added'], ['c2', 'Added']]);
+        expect((await initialData()).trackedOffers).toHaveLength(3);
+    });
+
+    it('keeps the status of a kept card and removes the others', async () => {
+        const kept = await change({ description: 'new' }, ['c1', 'c2']).expect(200);
+        expect(kept.body.data.offer).toEqual({ ...offer, description: 'new' });
+        expect(kept.body.data.trackedOffers.find(row => row.cardId === 'c1')).toEqual({ ...tracked, status: 'Used' });
+
+        const moved = await change({}, ['c2']).expect(200);
+        expect(moved.body.data.trackedOffers.map(row => row.cardId)).toEqual(['c2']);
+    });
+
+    it('keeps a row the caller has not seen', async () => {
+        const { body } = await change({}, ['c2'], []).expect(200);
+
+        expect(body.data.trackedOffers.map(row => row.cardId).sort()).toEqual(['c1', 'c2']);
+    });
+
+    it('saves an offer on no card', async () => {
+        await change({}, []).expect(200);
+
+        const data = await initialData();
+        expect(data.trackedOffers).toEqual([]);
+        expect(data.offers).toHaveLength(1);
+    });
+
+    it('changes nothing when a card does not exist', async () => {
+        const before = await initialData();
+        await change({ description: 'new' }, ['gone']).expect(400);
+        await create(['gone']).expect(400);
+
+        expect(await initialData()).toEqual(before);
+    });
+
+    it('does not bring back a deleted offer', async () => {
+        await api.delete('/api/offers/o1').expect(200);
+        await change({ ...offer }, ['c1']).expect(404);
+
+        expect((await initialData()).offers).toEqual([]);
+    });
+
+    it('rejects a new offer with a missing required field or a taken id', async () => {
+        await create([], { merchantName: '' }).expect(400);
+        await put('o1', { offer, cardIds: [], isNew: true, seenRowIds: [] }).expect(400);
+    });
+
+    it('rejects an incomplete body', async () => {
+        const body = { offer: {}, cardIds: [], isNew: false, seenRowIds: [] };
+        for (const field of Object.keys(body)) {
+            await put('o1', { ...body, [field]: undefined }).expect(400);
+        }
+        await put('o1', { ...body, cardIds: [7] }).expect(400);
+    });
+});
+
 describe('cascades', () => {
     it('removes tracked offers with their card', async () => {
         await seed();

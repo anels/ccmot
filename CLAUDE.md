@@ -26,9 +26,12 @@ different local file. Wipe that file to reset state.
   OfferManager, Settings. Reusable: Modal, AlertDialog, ConfirmDialog,
   PageHeader, CatalogOfferCard, TrackedOfferCard, CardTypeModal, RewardConfig,
   Layout.
-- `src/lib/store.ts` — Zustand store. **Async** actions hit the backend first;
-  `initialize()` runs once from `App.tsx` on mount via
-  `GET /api/initial-data`.
+- `src/lib/store.ts` — Zustand store. A write sends its request first and
+  changes local state only after the server accepts it. It never rejects: it
+  resolves a `WriteResult`, and a form closes or clears only when `ok`. The
+  store reports failures in `error` (`importData` leaves that to its caller).
+  `initialize()` runs once from `App.tsx` on mount via `GET /api/initial-data`.
+  Submit buttons use `useSubmit()` so a second click waits for the first.
 - `src/lib/lifecycle.ts` — what a tracked offer is now and what may be done
   with it: effective status, next status, reset, days left, whether an offer's
   date has passed. Views ask it; they do not compare dates or statuses
@@ -46,8 +49,10 @@ different local file. Wipe that file to reset state.
 - `server/app.js` — `createApp(db)`. The `RESOURCES` table declares each
   resource's columns and required fields, and the CRUD routes, import and
   `/api/initial-data` are generated from it. Add a column there and in a
-  migration. Errors: 400 for validation and constraint failures, 404 for an
-  unknown id, 500 otherwise.
+  migration. `PUT /api/offers/:id/with-cards` saves an offer and its tracked
+  offers in one transaction; it removes only rows the caller says it has seen.
+  Errors: 400 for validation and constraint failures, 404 for an unknown id,
+  500 otherwise.
 - `server/db.js` — `openDatabase()` over better-sqlite3 (synchronous). The
   schema is versioned with `PRAGMA user_version`: to change it, append a
   function to `MIGRATIONS`, never edit an existing one. The file is copied to

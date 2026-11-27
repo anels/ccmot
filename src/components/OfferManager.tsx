@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useStore } from '../lib/store';
 import { useCards } from '../hooks/useCards';
 import { useSearch } from '../hooks/useSearch';
@@ -9,7 +9,8 @@ import type { Offer } from '../types';
 import { Trash2, Calendar, Info, CreditCard, Edit2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
-import { formatExpiry, getOfferExpiry } from '../lib/lifecycle';
+import { formatExpiry, getOfferExpiry, historyLostBy } from '../lib/lifecycle';
+import { useSubmit } from '../hooks/useSubmit';
 import { OFFER_SEARCH_FIELDS } from '../lib/search';
 import { getCategoryColor } from '../lib/constants';
 import { listCategories } from '../lib/categories';
@@ -21,12 +22,14 @@ type DateInputWithPicker = HTMLInputElement & {
 
 const OfferManager: React.FC = () => {
     const cards = useCards();
-    const { offers, trackedOffers, rewards, addOffer, updateOffer, deleteOffer, trackOffer, deleteTrackedOffer } = useStore();
+    const { offers, trackedOffers, rewards, saveOffer, deleteOffer } = useStore();
+    const [isSaving, submit] = useSubmit();
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
     const [deleteId, setDeleteId] = useState<string | null>(null);
-    const [errors, setErrors] = useState<{ cards?: string }>({});
+    // Set while asking whether to drop recorded uses and rewards
+    const [removalWarning, setRemovalWarning] = useState<string | null>(null);
 
     const { searchTerm, setSearchTerm, filteredItems: filteredOffers } = useSearch(offers, OFFER_SEARCH_FIELDS);
 
@@ -38,7 +41,11 @@ const OfferManager: React.FC = () => {
         category: 'Shopping', // Default
     });
 
+    // Changes whenever the form is reset or loaded, so a late save leaves a newer form alone
+    const formSession = useRef(0);
+
     const resetForm = () => {
+        formSession.current += 1;
         setFormData({
             merchantName: '',
             description: '',
@@ -47,12 +54,12 @@ const OfferManager: React.FC = () => {
             category: 'Shopping',
         });
         setSelectedCards(new Set());
-        setErrors({});
         setEditingId(null);
         setIsFormOpen(false);
     };
 
     const handleEdit = (offer: Offer) => {
+        formSession.current += 1;
         setFormData({
             merchantName: offer.merchantName,
             description: offer.description,
@@ -67,48 +74,35 @@ const OfferManager: React.FC = () => {
             .filter(t => t.offerId === offer.id)
             .map(t => t.cardId);
         setSelectedCards(new Set(existingCardIds));
-        setErrors({});
     };
 
     // Past its date, an offer keeps the cards it is already on but takes no new ones.
     const { isPast: isFormPast } = getOfferExpiry(formData);
-    const trackedCardIds = new Set(trackedOffers.filter(t => t.offerId === editingId).map(t => t.cardId));
+    const trackedRows = trackedOffers.filter(t => t.offerId === editingId);
+    const trackedCardIds = new Set(trackedRows.map(t => t.cardId));
     const canSelectCard = (cardId: string) => !isFormPast || trackedCardIds.has(cardId);
-    const isCardRequired = !isFormPast || trackedCardIds.size > 0;
+    // Cards picked before the date was moved into the past are dropped, as are cards
+    // deleted since they were picked: the list no longer shows them to deselect
+    const cardIdsToSave = Array.from(selectedCards)
+        .filter(cardId => canSelectCard(cardId) && cards.some(card => card.id === cardId));
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const save = () => submit(async () => {
+        const session = formSession.current;
+        const result = await saveOffer(formData, cardIdsToSave, editingId ?? undefined);
+        // On failure the store has reported it; keep the form so the input is not lost
+        if (result.ok && session === formSession.current) resetForm();
+    });
+
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Cards picked before the date was moved into the past are dropped
-        const selectedCardIds = Array.from(selectedCards).filter(canSelectCard);
-
-        // Validate card selection
-        if (isCardRequired && selectedCardIds.length === 0) {
-            setErrors({ cards: 'Please select at least one card to track this offer.' });
+        const lost = historyLostBy(trackedRows, cardIdsToSave);
+        if (lost.length === 0) {
+            save();
             return;
         }
-
-        let offerId = editingId;
-
-        if (editingId) {
-            await updateOffer(editingId, formData);
-        } else {
-            offerId = await addOffer(formData);
-        }
-
-        // The add failed and the store has reported it; keep the form so the input is not lost
-        if (!offerId) return;
-
-        const existingTrackedOffers = trackedOffers.filter(t => t.offerId === offerId);
-
-        await Promise.all([
-            ...existingTrackedOffers
-                .filter(t => !selectedCards.has(t.cardId))
-                .map(t => deleteTrackedOffer(t.id)),
-            ...selectedCardIds.map(cardId => trackOffer(offerId, cardId)),
-        ]);
-
-        resetForm();
+        const names = lost.map(row => `${cards.find(card => card.id === row.cardId)?.name ?? 'Unknown card'} (${row.status})`);
+        setRemovalWarning(`Saving removes this offer's record on: ${names.join(', ')}.`);
     };
 
     const toggleCardSelection = (cardId: string) => {
@@ -166,7 +160,8 @@ const OfferManager: React.FC = () => {
                         <button
                             type="submit"
                             form="offer-form"
-                            className="h-9 px-3 bg-foreground hover:bg-foreground/85 text-background rounded-md transition-colors text-xs font-medium uppercase tracking-wider"
+                            disabled={isSaving}
+                            className="h-9 px-3 bg-foreground hover:bg-foreground/85 text-background rounded-md transition-colors text-xs font-medium uppercase tracking-wider disabled:opacity-30"
                         >
                             {editingId ? 'Update' : 'Save Offer'}
                         </button>
@@ -259,7 +254,7 @@ const OfferManager: React.FC = () => {
                     {/* Card Selection */}
                     <div className="pt-4 border-t border-border">
                         <label className="block text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-2">
-                            Track on Cards {isCardRequired && <span className="text-destructive">*</span>}
+                            Track on Cards
                         </label>
                         {isFormPast && (
                             <p className="text-xs text-muted-foreground mb-2">
@@ -281,15 +276,13 @@ const OfferManager: React.FC = () => {
                                                 onClick={() => {
                                                     if (!selectable) return;
                                                     toggleCardSelection(card.id);
-                                                    setErrors(prev => ({ ...prev, cards: undefined }));
                                                 }}
                                                 className={cn(
                                                     "flex items-center p-2.5 border rounded-md transition-colors",
                                                     selectable ? "cursor-pointer" : "cursor-not-allowed opacity-50",
                                                     selected
                                                         ? "bg-foreground/5 border-foreground"
-                                                        : cn("border-border bg-card", selectable && "hover:bg-accent"),
-                                                    errors.cards ? "border-destructive bg-destructive/5" : ""
+                                                        : cn("border-border bg-card", selectable && "hover:bg-accent")
                                                 )}
                                             >
                                                 <div
@@ -310,9 +303,6 @@ const OfferManager: React.FC = () => {
                                         );
                                     })}
                                 </div>
-                                {errors.cards && (
-                                    <p className="text-xs text-destructive">{errors.cards}</p>
-                                )}
                             </div>
                         )}
                     </div>
@@ -320,6 +310,16 @@ const OfferManager: React.FC = () => {
 
                 </form>
             </Modal>
+
+            {/* After the form in the document, so it stacks above it */}
+            <ConfirmDialog
+                isOpen={!!removalWarning}
+                onClose={() => setRemovalWarning(null)}
+                onConfirm={save}
+                title="Remove Cards"
+                message={removalWarning ?? ''}
+                confirmText="Remove"
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {filteredOffers.map((offer) => {

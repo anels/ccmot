@@ -1,5 +1,5 @@
 import { differenceInCalendarDays, format, isValid } from 'date-fns';
-import type { Offer, OfferStatus } from '../types';
+import type { Offer, OfferStatus, TrackedOffer } from '../types';
 import { parseOfferDate } from './utils';
 
 export type OfferExpiry = {
@@ -51,4 +51,10 @@ export function getTrackedOfferState(
     const expired = storedStatus === 'Expired' || getOfferExpiry(offer, today).isPast;
     // An expired offer can still be marked used: the purchase may have been in time.
     return { status: expired ? 'Expired' : 'Added', next: 'Used', canReset: false };
+}
+
+/** The tracked offers recording a use or a reward that would be lost by keeping only `keptCardIds`. */
+export function historyLostBy(rows: TrackedOffer[], keptCardIds: string[]): TrackedOffer[] {
+    const kept = new Set(keptCardIds);
+    return rows.filter(row => !kept.has(row.cardId) && (row.status === 'Used' || row.status === 'Awarded'));
 }

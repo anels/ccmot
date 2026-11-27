@@ -8,9 +8,9 @@ The application is a **Full-Stack** solution with a decoupled Frontend and Backe
 
 ### 1. State Management (Zustand + API)
 Located in `src/lib/store.ts`.
-- **Async Store**: The store is now asynchronous. Actions (`addCard`, `updateOffer`, etc.) call the backend API first.
+- **Async Store**: Actions (`addCard`, `saveOffer`, etc.) call the backend API first and update local state only when it accepts the change. Each resolves `{ ok: true }` or `{ ok: false, error }`.
 - **Initialization**: `initialize()` fetches all data (`cards`, `offers`, `trackedOffers`) from `GET /api/initial-data` on app mount.
-- **Optimistic Updates**: Some actions update the UI immediately while waiting for server confirmation.
+- **Failures**: The store shows the error in a banner above any dialog and reloads from the server. Forms stay open with their input.
 
 ### 2. Backend API (`server/`)
 A lightweight Express server managing a SQLite database (`~/.ccmot/database.sqlite`, or `CCMOT_DB_PATH`) through better-sqlite3.
@@ -19,6 +19,7 @@ A lightweight Express server managing a SQLite database (`~/.ccmot/database.sqli
 - **Initial Data**: `GET /api/initial-data` (Bulk fetch for efficient startup).
 - **Resources**: `cards`, `offers`, `tracked-offers`, `card-types`, `rewards`. Each has `GET /api/<resource>`, `POST /api/<resource>`, `PUT /api/<resource>/:id` (updates only the fields sent) and `DELETE /api/<resource>/:id`, generated from the `RESOURCES` table in `server/app.js`.
 - **Import**: `POST /api/import` replaces all data in one transaction.
+- **Save an offer**: `PUT /api/offers/:id/with-cards` takes `{ offer, cardIds, isNew, seenRowIds }` and saves the offer and the cards tracking it in one transaction. Rows not in `seenRowIds` are never removed, and updating a missing offer is a 404.
 - **Errors**: `{ "error": "..." }` with 400 (validation or constraint failure), 404 (unknown id) or 500.
 - **Logging**: Uses `morgan` for HTTP request logging; request bodies are not logged.
 

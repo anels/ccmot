@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { useStore } from '../lib/store';
+import { useStore, type WriteResult } from '../lib/store';
+import { useSubmit } from '../hooks/useSubmit';
 import { CATEGORIES } from '../lib/constants';
 import { Trash2, Plus, ChevronDown, ChevronRight, Edit2 } from 'lucide-react';
 import type { CardIssuer, CardType, Reward } from '../types';
@@ -32,14 +33,8 @@ export const RewardConfig: React.FC = () => {
         setIsModalOpen(true);
     };
 
-    const handleSave = async (data: { name: string; issuer: CardIssuer; color: string }) => {
-        if (editingType) {
-            await updateCardType(editingType.id, data);
-            return;
-        }
-        // Propagate addCardType's '' failure signal so the modal stays open.
-        return addCardType(data);
-    };
+    const handleSave = (data: { name: string; issuer: CardIssuer; color: string }) =>
+        editingType ? updateCardType(editingType.id, data) : addCardType(data);
 
     return (
         <div className="space-y-5 animate-in fade-in duration-200">
@@ -106,32 +101,38 @@ const CardTypeRow: React.FC<{
     toggleExpand: () => void;
     onEdit: () => void;
     onDelete: () => void;
-    onAddReward: (r: RewardDraft) => Promise<void>;
-    onDeleteReward: (id: string) => Promise<void>;
+    onAddReward: (r: RewardDraft) => Promise<WriteResult>;
+    onDeleteReward: (id: string) => Promise<WriteResult>;
 }> = ({ cardType, rewards, isExpanded, toggleExpand, onEdit, onDelete, onAddReward, onDeleteReward }) => {
     const [category, setCategory] = useState(CATEGORIES[0]);
     const [isCustomCategory, setIsCustomCategory] = useState(false);
     const [customCategory, setCustomCategory] = useState('');
     const [value, setValue] = useState('');
     const [description, setDescription] = useState('');
+    const [isSaving, submit] = useSubmit();
+    // A rule stays listed until the server accepts its delete, so block a second click
+    const [isDeleting, submitDelete] = useSubmit();
 
-    const handleAddReward = async (e: React.FormEvent) => {
+    const handleAddReward = (e: React.FormEvent) => {
         e.preventDefault();
         if (!value) return;
 
         const finalCategory = isCustomCategory ? customCategory : category;
         if (!finalCategory) return;
 
-        await onAddReward({
-            cardTypeId: cardType.id,
-            category: finalCategory,
-            rewardValue: parseFloat(value),
-            rewardUnit: '%',
-            description
+        submit(async () => {
+            const result = await onAddReward({
+                cardTypeId: cardType.id,
+                category: finalCategory,
+                rewardValue: parseFloat(value),
+                rewardUnit: '%',
+                description
+            });
+            if (!result.ok) return;
+            setValue('');
+            setDescription('');
+            if (isCustomCategory) setCustomCategory('');
         });
-        setValue('');
-        setDescription('');
-        if (isCustomCategory) setCustomCategory('');
     };
 
     return (
@@ -229,7 +230,7 @@ const CardTypeRow: React.FC<{
                                 className="w-full h-8 px-2 rounded-md border border-border text-xs bg-card focus:ring-2 focus:ring-ring/40 focus:border-foreground/40 outline-none"
                             />
                         </div>
-                        <button type="submit" className="h-8 px-3 bg-foreground hover:bg-foreground/85 text-background rounded-md text-[11px] font-medium uppercase tracking-wider transition-colors">
+                        <button type="submit" disabled={isSaving} className="h-8 px-3 bg-foreground hover:bg-foreground/85 text-background rounded-md text-[11px] font-medium uppercase tracking-wider transition-colors disabled:opacity-30">
                             Add Rule
                         </button>
                     </form>
@@ -252,8 +253,9 @@ const CardTypeRow: React.FC<{
                                     )}
                                 </div>
                                 <button
-                                    onClick={() => onDeleteReward(reward.id)}
-                                    className="text-muted-foreground hover:text-destructive transition-colors p-1 rounded-md hover:bg-destructive/10 shrink-0"
+                                    onClick={() => submitDelete(async () => { await onDeleteReward(reward.id); })}
+                                    disabled={isDeleting}
+                                    className="text-muted-foreground hover:text-destructive transition-colors p-1 rounded-md hover:bg-destructive/10 shrink-0 disabled:opacity-30"
                                 >
                                     <Trash2 size={13} />
                                 </button>

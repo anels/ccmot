@@ -4,6 +4,8 @@ import type { Offer, CreditCard as CreditCardType, TrackedOffer } from '../types
 import { format } from 'date-fns';
 import { getCategoryColor } from '../lib/constants';
 import { CategoryIcon } from './CategoryIcon';
+import { useSubmit } from '../hooks/useSubmit';
+import type { WriteResult } from '../lib/store';
 import { cn } from '../lib/utils';
 import { formatExpiry, getOfferExpiry } from '../lib/lifecycle';
 
@@ -11,11 +13,12 @@ interface CatalogOfferCardProps {
     offer: Offer;
     cards: CreditCardType[];
     trackedOffers: TrackedOffer[];
-    onTrackOffer: (offerId: string, cardId: string) => void;
+    onTrackOffer: (offerId: string, cardId: string) => Promise<WriteResult>;
 }
 
 export const CatalogOfferCard: React.FC<CatalogOfferCardProps> = ({ offer, cards, trackedOffers, onTrackOffer }) => {
     const [selectedCardId, setSelectedCardId] = useState<string>('');
+    const [isSaving, submit] = useSubmit();
     const catColor = getCategoryColor(offer.category || 'Other');
 
     const alreadyTrackedCards = trackedOffers
@@ -25,10 +28,11 @@ export const CatalogOfferCard: React.FC<CatalogOfferCardProps> = ({ offer, cards
     const availableCards = cards.filter(c => !alreadyTrackedCards.includes(c.id));
 
     const handleTrack = () => {
-        if (selectedCardId) {
-            onTrackOffer(offer.id, selectedCardId);
-            setSelectedCardId('');
-        }
+        if (!selectedCardId) return;
+        submit(async () => {
+            const result = await onTrackOffer(offer.id, selectedCardId);
+            if (result.ok) setSelectedCardId('');
+        });
     };
 
     const { date: expiryDate, isPast } = getOfferExpiry(offer);
@@ -90,7 +94,7 @@ export const CatalogOfferCard: React.FC<CatalogOfferCardProps> = ({ offer, cards
                             </div>
                         </div>
                         <button
-                            disabled={!selectedCardId}
+                            disabled={!selectedCardId || isSaving}
                             onClick={handleTrack}
                             className="px-2.5 bg-foreground text-background rounded-md hover:bg-foreground/85 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                             title="Track offer"

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Offer, OfferStatus } from '../types';
-import { formatExpiry, getOfferExpiry, getTrackedOfferState } from './lifecycle';
+import type { Offer, OfferStatus, TrackedOffer } from '../types';
+import { formatExpiry, getOfferExpiry, getTrackedOfferState, historyLostBy } from './lifecycle';
 
 const offerExpiring = (expiryDate: string): Offer => ({
     id: 'o1', merchantName: 'Best Buy', description: 'Spend $100, get $20', terms: '', category: 'Shopping', expiryDate,
@@ -67,5 +67,19 @@ describe('getTrackedOfferState', () => {
 
     it('keeps a row with an unknown status visible as added', () => {
         expect(state(lastDay, 'used' as OfferStatus).status).toBe('Added');
+    });
+});
+
+describe('historyLostBy', () => {
+    const row = (cardId: string, status: OfferStatus): TrackedOffer =>
+        ({ id: cardId, offerId: 'o1', cardId, status, dateAdded: '' });
+    const rows = [row('added', 'Added'), row('used', 'Used'), row('won', 'Awarded'), row('kept', 'Used'), row('old', 'Expired')];
+
+    it('names the used and awarded rows of removed cards', () => {
+        expect(historyLostBy(rows, ['kept']).map(lost => lost.cardId)).toEqual(['used', 'won']);
+    });
+
+    it('loses nothing when every card is kept', () => {
+        expect(historyLostBy(rows, rows.map(kept => kept.cardId))).toEqual([]);
     });
 });

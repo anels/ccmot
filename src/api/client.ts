@@ -1,4 +1,4 @@
-import type { CreditCard, Offer, OfferStatus, AppData, CardType, Reward } from '../types';
+import type { CreditCard, Offer, OfferStatus, AppData, CardType, Reward, TrackedOffer } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -19,6 +19,13 @@ const jsonRequest = (method: 'POST' | 'PUT', body: unknown): RequestInit => ({
 
 const deleteRequest: RequestInit = { method: 'DELETE' };
 
+export type SaveOfferCards = {
+    isNew: boolean;
+    cardIds: string[];
+    /** The tracked offers the caller knows of; only these can be removed. */
+    seenRowIds: string[];
+};
+
 export const api = {
     // Initial Data
     getInitialData: () => fetchJson<AppData>('/initial-data'),
@@ -35,8 +42,10 @@ export const api = {
     deleteCard: (id: string) => fetchJson(`/cards/${id}`, deleteRequest),
 
     // Offers
-    addOffer: (offer: Offer) => fetchJson('/offers', jsonRequest('POST', offer)),
-    updateOffer: (id: string, updates: Partial<Offer>) => fetchJson(`/offers/${id}`, jsonRequest('PUT', updates)),
+    // The offer and the cards that track it, saved together.
+    saveOffer: (offer: Offer, cards: SaveOfferCards) => fetchJson<{ data: { offer: Offer; trackedOffers: TrackedOffer[] } }>(
+        `/offers/${offer.id}/with-cards`, jsonRequest('PUT', { offer, ...cards })
+    ),
     deleteOffer: (id: string) => fetchJson(`/offers/${id}`, deleteRequest),
 
     // Tracked Offers

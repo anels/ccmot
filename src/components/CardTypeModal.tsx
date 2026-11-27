@@ -1,15 +1,17 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Modal } from './Modal';
 import { ISSUERS, ISSUER_COLORS } from '../lib/constants';
 import type { CardIssuer, CardType } from '../types';
 import { cn } from '../lib/utils';
 import { RotateCcw } from 'lucide-react';
+import { useSubmit } from '../hooks/useSubmit';
+import type { WriteResult } from '../lib/store';
 
 interface CardTypeModalProps {
     isOpen: boolean;
     onClose: () => void;
-    // onSave resolves with the new id, or '' on failure (dialog stays open).
-    onSave: (data: { name: string; issuer: CardIssuer; color: string }) => Promise<string | void>;
+    // The dialog closes only when the save succeeds.
+    onSave: (data: { name: string; issuer: CardIssuer; color: string }) => Promise<WriteResult>;
     initialData?: CardType;
     title?: string;
 }
@@ -41,8 +43,15 @@ export const CardTypeModal: React.FC<CardTypeModalProps> = ({
 const CardTypeForm: React.FC<{
     initialData?: CardType;
     onClose: () => void;
-    onSave: (data: { name: string; issuer: CardIssuer; color: string }) => Promise<string | void>;
+    onSave: (data: { name: string; issuer: CardIssuer; color: string }) => Promise<WriteResult>;
 }> = ({ initialData, onClose, onSave }) => {
+    const [isSaving, submit] = useSubmit();
+    // A save that finishes after this form was closed must not close one opened since
+    const isMounted = useRef(true);
+    useEffect(() => {
+        isMounted.current = true;
+        return () => { isMounted.current = false; };
+    }, []);
     const [name, setName] = useState(initialData?.name ?? '');
     const [issuer, setIssuer] = useState<CardIssuer>(initialData?.issuer ?? 'Amex');
     const [color, setColor] = useState(initialData?.color || ISSUER_COLORS[initialData?.issuer ?? 'Amex']);
@@ -52,13 +61,13 @@ const CardTypeForm: React.FC<{
         setColor(ISSUER_COLORS[newIssuer] || '#000000');
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!name) return;
-        // '' means the save failed; keep the dialog open so the input is not lost.
-        const result = await onSave({ name, issuer, color });
-        if (result === '') return;
-        onClose();
+        submit(async () => {
+            const result = await onSave({ name, issuer, color });
+            if (result.ok && isMounted.current) onClose();
+        });
     };
 
     return (
@@ -134,7 +143,8 @@ const CardTypeForm: React.FC<{
                     </button>
                     <button
                         type="submit"
-                        className="h-9 px-3 bg-foreground text-background rounded-md hover:bg-foreground/85 transition-colors text-xs font-medium uppercase tracking-wider"
+                        disabled={isSaving}
+                        className="h-9 px-3 bg-foreground text-background rounded-md hover:bg-foreground/85 transition-colors text-xs font-medium uppercase tracking-wider disabled:opacity-30"
                     >
                         {initialData ? 'Update' : 'Create'}
                     </button>

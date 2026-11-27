@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useStore } from '../lib/store';
 import { useCards } from '../hooks/useCards';
 import { useSearch } from '../hooks/useSearch';
@@ -10,12 +10,14 @@ import { cn, getReadableTextColor } from '../lib/utils';
 import { ISSUER_COLORS } from '../lib/constants';
 import { CardTypeModal } from './CardTypeModal';
 import { RewardConfig } from './RewardConfig';
+import { useSubmit } from '../hooks/useSubmit';
 
 const CARD_SEARCH_FIELDS: (keyof CreditCard)[] = ['name', 'issuer', 'last4', 'cardHolder', 'notes'];
 
 const CardManager: React.FC = () => {
     const cards = useCards();
     const { cardTypes, addCard, updateCard, deleteCard, addCardType } = useStore();
+    const [isSaving, submit] = useSubmit();
     const [activeTab, setActiveTab] = useState<'wallet' | 'config'>('wallet');
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isCreateTypeOpen, setIsCreateTypeOpen] = useState(false); // State for new type modal
@@ -42,7 +44,13 @@ const CardManager: React.FC = () => {
         cardTypeId: undefined,
     });
 
+    // Changes whenever the form is reset or loaded, so a late save leaves a newer form alone
+    const formSession = useRef(0);
+    // A type deleted since it was picked cannot be saved, and the list no longer shows it
+    const cardTypeId = cardTypes.some(t => t.id === formData.cardTypeId) ? formData.cardTypeId : undefined;
+
     const resetForm = () => {
+        formSession.current += 1;
         setFormData({
             name: '',
             issuer: 'Amex',
@@ -57,6 +65,7 @@ const CardManager: React.FC = () => {
     };
 
     const handleEdit = (card: CreditCard) => {
+        formSession.current += 1;
         setFormData({
             name: card.name,
             issuer: card.issuer,
@@ -91,34 +100,30 @@ const CardManager: React.FC = () => {
     };
 
     const handleCreateTypeSave = async (data: { name: string; issuer: CardIssuer; color: string }) => {
-        const id = await addCardType(data);
-        if (!id) {
-            // addCardType failed; the store already refetched. Keep the
-            // dialog open so the user's input is not lost.
-            return;
+        const session = formSession.current;
+        const result = await addCardType(data);
+        if (result.ok && session === formSession.current) {
+            setFormData(prev => ({
+                ...prev,
+                cardTypeId: result.id,
+                name: data.name,
+                issuer: data.issuer,
+                color: data.color || ISSUER_COLORS[data.issuer] || '#000000',
+            }));
         }
-        setIsCreateTypeOpen(false);
-        setFormData(prev => ({
-            ...prev,
-            cardTypeId: id,
-            name: data.name,
-            issuer: data.issuer,
-            color: data.color || ISSUER_COLORS[data.issuer] || '#000000',
-        }));
+        return result;
     };
 
-
-
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (editingId) {
-            await updateCard(editingId, formData);
-        } else {
-            await addCard(formData);
-        }
-
-        resetForm();
+        submit(async () => {
+            const session = formSession.current;
+            const card = { ...formData, cardTypeId };
+            const result = editingId ? await updateCard(editingId, card) : await addCard(card);
+            // On failure the store has reported it; keep the form so the input is not lost
+            if (result.ok && session === formSession.current) resetForm();
+        });
     };
 
     const confirmDelete = async () => {
@@ -215,7 +220,7 @@ const CardManager: React.FC = () => {
                                             <label className="block text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">Card Type (Template)</label>
                                             <select
                                                 className="w-full h-9 px-3 border border-border rounded-md bg-card text-sm focus:ring-2 focus:ring-ring/40 focus:border-foreground/40 outline-none"
-                                                value={formData.cardTypeId || ''}
+                                                value={cardTypeId || ''}
                                                 onChange={(e) => handleCardTypeChange(e.target.value)}
                                             >
                                                 <option value="">Select a card type…</option>
@@ -261,7 +266,7 @@ const CardManager: React.FC = () => {
                                     <div className="p-3 bg-muted/40 rounded-md border border-dashed border-border">
                                         <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5 font-medium">
                                             <Settings size={11} />
-                                            {formData.cardTypeId ? "Inherited from Card Type" : "Select a Card Type"}
+                                            {cardTypeId ? "Inherited from Card Type" : "Select a Card Type"}
                                         </p>
                                         <div className="flex items-center gap-4">
                                             <div className="flex flex-col">
@@ -354,9 +359,9 @@ const CardManager: React.FC = () => {
                                 </button>
                                 <button
                                     type="submit"
-                                    disabled={!editingId && !formData.cardTypeId}
+                                    disabled={isSaving || (!editingId && !cardTypeId)}
                                     className="h-9 px-3 bg-foreground text-background rounded-md hover:bg-foreground/85 transition-colors text-xs font-medium uppercase tracking-wider disabled:opacity-30 disabled:cursor-not-allowed"
-                                    title={!editingId && !formData.cardTypeId ? 'Pick a card type to continue' : ''}
+                                    title={!editingId && !cardTypeId ? 'Pick a card type to continue' : ''}
                                 >
                                     {editingId ? 'Update' : 'Save Card'}
                                 </button>

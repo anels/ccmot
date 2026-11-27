@@ -19,6 +19,30 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
     return (
         <div className="min-h-screen bg-background text-foreground font-sans">
+            {/* Above every dialog, so a form that stays open shows why it did */}
+            {error && (
+                <div role="alert" className="fixed top-3 left-1/2 -translate-x-1/2 z-[60] w-[calc(100%-1.5rem)] max-w-xl rounded-md bg-card shadow-lg">
+                    <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-md border border-destructive/30 bg-destructive/10 text-sm text-destructive">
+                        <span>{error}</span>
+                        <div className="flex items-center gap-1 shrink-0">
+                            <button
+                                onClick={() => initialize()}
+                                className="h-7 px-2 rounded-md border border-destructive/30 hover:bg-destructive/10 transition-colors text-[11px] font-medium uppercase tracking-wider"
+                            >
+                                Reload
+                            </button>
+                            <button
+                                onClick={clearError}
+                                className="p-1 rounded-md hover:bg-destructive/10 transition-colors"
+                                aria-label="Dismiss"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Mobile top bar */}
             <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-background sticky top-0 z-50 border-b border-border">
                 <div className="flex items-center gap-2.5">
@@ -84,27 +108,6 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                             className="fixed inset-0 bg-foreground/30 z-30 lg:hidden animate-in fade-in"
                             onClick={() => setIsMobileMenuOpen(false)}
                         />
-                    )}
-
-                    {error && (
-                        <div role="alert" className="mb-4 flex items-center justify-between gap-3 px-3 py-2 rounded-md border border-destructive/30 bg-destructive/10 text-sm text-destructive">
-                            <span>{error}</span>
-                            <div className="flex items-center gap-1 shrink-0">
-                                <button
-                                    onClick={() => initialize()}
-                                    className="h-7 px-2 rounded-md border border-destructive/30 hover:bg-destructive/10 transition-colors text-[11px] font-medium uppercase tracking-wider"
-                                >
-                                    Reload
-                                </button>
-                                <button
-                                    onClick={clearError}
-                                    className="p-1 rounded-md hover:bg-destructive/10 transition-colors"
-                                    aria-label="Dismiss"
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
-                            </div>
-                        </div>
                     )}
 
                     <div className="animate-in fade-in duration-200">

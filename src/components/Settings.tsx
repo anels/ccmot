@@ -68,12 +68,12 @@ const Settings: React.FC = () => {
 
     const handleConfirmImport = async () => {
         if (confirmImport) {
-            try {
-                await importData(confirmImport.data);
+            const result = await importData(confirmImport.data);
+            if (result.ok) {
                 showAlert('Import Successful', 'Your data has been imported successfully.', 'success');
-            } catch (err) {
-                console.error(err);
-                showAlert('Import Failed', 'Failed to import data. Please try again.', 'error');
+            } else {
+                // A lost response can follow a saved import, so do not claim nothing changed
+                showAlert('Import Failed', `${result.error}. An import applies completely or not at all. Check your data before trying again.`, 'error');
             }
             setConfirmImport(null);
         }
