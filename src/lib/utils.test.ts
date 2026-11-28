@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { CardType, CreditCard } from '../types';
-import { parseOfferDate, resolveCards } from './utils';
+import { formatReward, parseOfferDate, resolveCards } from './utils';
+
+describe('formatReward', () => {
+    it('writes each unit its own way', () => {
+        expect([formatReward(5, '%'), formatReward(4, 'x'), formatReward(3, 'points')]).toEqual(['5%', '4x', '3 pts']);
+    });
+
+    it('shows an unknown unit as it is', () => {
+        expect(formatReward(2, 'miles' as never)).toBe('2 miles');
+    });
+});
 
 describe('parseOfferDate', () => {
     it('reads a date as local midnight', () => {
@@ -26,6 +36,12 @@ describe('resolveCards', () => {
 
     it('takes issuer and color from the card type and keeps the rest', () => {
         expect(resolveCards([card], [type])).toEqual([{ ...card, issuer: 'Amex', color: '#B8860B' }]);
+    });
+
+    it('keeps the values of a card that its type leaves empty', () => {
+        const blank = { ...type, issuer: '' as never, color: '' };
+
+        expect(resolveCards([card], [blank])).toEqual([card]);
     });
 
     it('keeps the values of a card without a type', () => {

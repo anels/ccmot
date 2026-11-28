@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { CreditCard, CardType } from "../types"
+import type { CreditCard, CardType, Reward } from "../types"
 
 export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))
@@ -22,6 +22,12 @@ export function getReadableTextColor(hexColor: string | undefined): '#FFFFFF' | 
     return yiq >= 160 ? '#0A0A0A' : '#FFFFFF';
 }
 
+/** A reward's rate as shown everywhere: 5%, 4x, 3 pts. */
+export function formatReward(value: number, unit: Reward['rewardUnit']): string {
+    if (unit === '%' || unit === 'x') return `${value}${unit}`;
+    return `${value} ${unit === 'points' ? 'pts' : unit}`;
+}
+
 export function parseOfferDate(dateStr: string): Date {
     if (!dateStr) return new Date(NaN);
     // Parse YYYY-MM-DD manually to avoid UTC conversion
@@ -35,12 +41,12 @@ export function parseOfferDate(dateStr: string): Date {
 /**
  * Cards as they are displayed: a card with a card type shows that type's issuer
  * and color, so editing the type restyles every card of it. The values stored
- * on the card apply only when it has no type.
+ * on the card apply only when it has no type, or its type leaves one empty.
  */
 export function resolveCards(cards: CreditCard[], cardTypes: CardType[]): CreditCard[] {
     const typesById = new Map(cardTypes.map(type => [type.id, type]));
     return cards.map(card => {
         const type = card.cardTypeId ? typesById.get(card.cardTypeId) : undefined;
-        return type ? { ...card, issuer: type.issuer, color: type.color || card.color } : card;
+        return type ? { ...card, issuer: type.issuer || card.issuer, color: type.color || card.color } : card;
     });
 }

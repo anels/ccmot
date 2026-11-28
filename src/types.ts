@@ -18,6 +18,7 @@ export interface Offer {
     terms: string; // Detailed terms
     expiryDate: string; // ISO Date string
     category: Category;
+    url?: string;
 }
 
 export type OfferCategory = 'Travel' | 'Dining' | 'Shopping' | 'Entertainment' | 'Service' | 'Grocery Stores' | 'Gas/EV charging' | 'TV, Internet & Streaming Services' | 'Home Utilities' | 'Other';

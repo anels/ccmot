@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import type { CreditCard, Offer, AppData, OfferStatus, CardType, Reward } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { api } from '../api/client';
-import { normalizeImportData } from './data-utils';
+import { upgradeBackup } from './backup';
+import { DEFAULT_CARD_TYPE_COLOR } from './constants';
+import { resolveCards } from './utils';
 
 type RewardInput = Partial<Reward> & Pick<Reward, 'cardTypeId' | 'category' | 'rewardValue' | 'rewardUnit'>;
 
@@ -88,10 +90,9 @@ export const useStore = create<AppState>((set, get) => {
             set({ isLoading: true, error: null });
             try {
                 const data = await api.getInitialData();
-                const mappedData = normalizeImportData(data);
 
                 set({
-                    ...mappedData,
+                    ...data,
                     isLoading: false,
                 });
             } catch (error) {
@@ -104,10 +105,7 @@ export const useStore = create<AppState>((set, get) => {
 
         refetchData: async () => {
             try {
-                const data = await api.getInitialData();
-                const mappedData = normalizeImportData(data);
-
-                set(mappedData);
+                set(await api.getInitialData());
             } catch (error) {
                 console.error('Failed to refetch data:', error);
             }
@@ -188,7 +186,7 @@ export const useStore = create<AppState>((set, get) => {
             let result: WriteResult = { ok: true };
             set({ error: null });
             try {
-                await api.importData(normalizeImportData(data));
+                await api.importData(upgradeBackup(data));
             } catch (error) {
                 console.error('Failed to import data to backend:', error);
                 result = { ok: false, error: errorDetail(error) };
@@ -213,7 +211,7 @@ export const useStore = create<AppState>((set, get) => {
             const id = uuidv4();
             const newCardType = { ...cardType, id };
             // Ensure color is present, default if not
-            if (!newCardType.color) newCardType.color = '#374151';
+            if (!newCardType.color) newCardType.color = DEFAULT_CARD_TYPE_COLOR;
 
             const result = await write('Failed to add card type',
                 () => api.addCardType(newCardType),
@@ -229,8 +227,10 @@ export const useStore = create<AppState>((set, get) => {
             () => api.deleteCardType(id),
             state => ({
                 cardTypes: state.cardTypes.filter(c => c.id !== id),
-                cards: state.cards.map(card =>
-                    card.cardTypeId === id ? { ...card, cardTypeId: undefined } : card
+                // As the server does, each card keeps the look its type gave it
+                cards: state.cards.map(card => card.cardTypeId === id
+                    ? { ...resolveCards([card], state.cardTypes)[0], cardTypeId: undefined }
+                    : card
                 ),
                 rewards: state.rewards.filter(r => r.cardTypeId !== id),
             })),

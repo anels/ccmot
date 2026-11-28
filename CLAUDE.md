@@ -39,20 +39,28 @@ different local file. Wipe that file to reset state.
 - `src/lib/dashboard.ts` — `buildDashboardView` and `buildOffersExport`, the
   pure derivations behind the dashboard. `Dashboard.tsx` only renders them.
 - `src/lib/utils.ts` — `cn`, `parseOfferDate`, `getReadableTextColor`,
-  `resolveCards`.
+  `resolveCards`, `formatReward` (the only way to write a reward's rate).
 - `GLOSSARY.md` — the domain terms. Use them in code and UI text.
 - `src/lib/constants.tsx` — Categories, issuer colors, **STATUS_COLORS**,
   **STATUS_DOT**, **CATEGORY_COLORS** + `getCategoryColor()`.
 - `src/api/client.ts` — fetch wrapper, base URL `VITE_API_URL`
-  (default `http://localhost:3001/api`).
+  (default `http://localhost:3001/api`). It decodes server rows: a `null`
+  column becomes an absent field, except that `cardHolder`, `notes`, `terms`,
+  `expiryDate` and a reward's `description` become `''`. An empty offer category
+  reads as 'Shopping' and an empty reward unit as '%'.
+- `src/lib/backup.ts` — `upgradeBackup`, used only by import: legacy field
+  names and defaults, safe repairs. The server rejects what is left invalid.
 - `server/index.js` — reads the environment, opens the database, listens.
 - `server/app.js` — `createApp(db)`. The `RESOURCES` table declares each
-  resource's columns and required fields, and the CRUD routes, import and
-  `/api/initial-data` are generated from it. Add a column there and in a
-  migration. `PUT /api/offers/:id/with-cards` saves an offer and its tracked
-  offers in one transaction; it removes only rows the caller says it has seen.
-  Errors: 400 for validation and constraint failures, 404 for an unknown id,
-  500 otherwise.
+  resource's columns, required fields, value checks and delete hooks, and the
+  CRUD routes, import and `/api/initial-data` are generated from it. Required
+  fields and checks apply to creates, updates and imports; `requiredOnCreate`
+  fields (a card's `last4`) may stay empty in stored rows. Add a column there
+  and in a migration. `PUT /api/offers/:id/with-cards` saves an offer and its
+  tracked offers in one transaction; it removes only rows the caller says it has
+  seen.
+  Errors: 400 for validation and constraint failures (validation names the row
+  and field), 404 for an unknown id, 500 otherwise.
 - `server/db.js` — `openDatabase()` over better-sqlite3 (synchronous). The
   schema is versioned with `PRAGMA user_version`: to change it, append a
   function to `MIGRATIONS`, never edit an existing one. The file is copied to
@@ -61,8 +69,8 @@ different local file. Wipe that file to reset state.
   rewards and unlinks its cards.
 - `server/test/` — vitest + supertest against an in-memory database.
 - Field names are camelCase end to end (database columns, API, frontend
-  types). Only `normalizeImportData` still accepts the old snake_case names,
-  for backups exported before the rename.
+  types). Only `upgradeBackup` still accepts the old snake_case names, for
+  backups exported before the rename.
 
 ## Styling
 
@@ -88,7 +96,8 @@ different local file. Wipe that file to reset state.
 - **Card type inheritance**: a card with a `cardTypeId` shows its type's
   issuer and color. Render cards from `useCards()` (`src/hooks/useCards.ts`),
   not from `useStore().cards`, which holds the stored values and is for
-  writes and export only.
+  writes and export only. Deleting a type copies its issuer and color onto its
+  cards (server `beforeDelete`, mirrored in the store).
 - **Modal stacking**: `Modal`, `ConfirmDialog` and `AlertDialog` share
   `src/hooks/useDialogLayer.ts`, which keeps one stack of open dialogs for the
   body scroll-lock and gives Escape to the topmost one. A new dialog component

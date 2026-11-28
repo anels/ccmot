@@ -1,15 +1,19 @@
 import type { AppData, Reward } from '../types';
+import { DEFAULT_CARD_TYPE_COLOR } from './constants';
 
 type LooseRecord = Record<string, unknown>;
 
 const readString = (value: unknown) => typeof value === 'string' ? value : undefined;
 const readNumber = (value: unknown) => typeof value === 'number' ? value : undefined;
+// Leaves anything but a string for the server to reject
+const trimmed = <T>(value: T) => (typeof value === 'string' ? value.trim() : value) as T;
 
 /**
- * Normalizes imported data to ensure it matches the application's schema.
- * Handles legacy field names and missing optional fields.
+ * Brings a backup up to the current format before it is imported: reads legacy
+ * field names, fills what older backups left out and trims category names. Only
+ * what can be repaired safely; the server rejects the rest.
  */
-export function normalizeImportData(data: Partial<AppData>): AppData {
+export function upgradeBackup(data: Partial<AppData>): AppData {
     const normalizedCards = (data.cards || []).map(c => {
         const unsafeObj = c as unknown as LooseRecord;
         const cardTypeId = c.cardTypeId || readString(unsafeObj.card_type_id);
@@ -38,14 +42,17 @@ export function normalizeImportData(data: Partial<AppData>): AppData {
             merchantName,
             description: o.description || '',
             terms: o.terms || '',
-            category: o.category || 'Shopping',
+            category: trimmed(o.category) || 'Shopping',
             expiryDate,
             url
         };
     });
 
     const normalizedTrackedOffers = data.trackedOffers || [];
-    const normalizedCardTypes = data.cardTypes || [];
+    const normalizedCardTypes = (data.cardTypes || []).map(type => ({
+        ...type,
+        color: type.color || DEFAULT_CARD_TYPE_COLOR,
+    }));
     const normalizedRewards = (data.rewards || []).map(reward => {
         const unsafeObj = reward as unknown as LooseRecord;
         const rewardUnit = reward.rewardUnit || readString(unsafeObj.reward_unit) || '%';
@@ -53,6 +60,7 @@ export function normalizeImportData(data: Partial<AppData>): AppData {
         return {
             ...reward,
             cardTypeId: reward.cardTypeId || readString(unsafeObj.card_type_id) || '',
+            category: trimmed(reward.category),
             rewardValue: reward.rewardValue ?? readNumber(unsafeObj.reward_value) ?? 0,
             rewardUnit: rewardUnit as Reward['rewardUnit'],
             description: reward.description || '',

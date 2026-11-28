@@ -36,7 +36,7 @@ describe('resources', () => {
 
     it('rejects a create with a missing required field', async () => {
         const { body } = await api.post('/api/cards').send({ ...card, cardTypeId: null, last4: '' }).expect(400);
-        expect(body.error).toBe('Missing required fields');
+        expect(body.error).toBe('cards[c1]: last4 is required');
     });
 
     it('rejects a row that breaks a foreign key', async () => {
@@ -80,6 +80,57 @@ describe('resources', () => {
 
         const { rewards } = await initialData();
         expect(rewards).toEqual([{ ...reward, rewardValue: 5 }]);
+    });
+});
+
+describe('validation', () => {
+    const invalid = [
+        ['offers', 'merchantName', '', 'merchantName is required'],
+        ['offers', 'description', null, 'description is required'],
+        ['offers', 'expiryDate', '01/31/2030', 'expiryDate must be a date as YYYY-MM-DD'],
+        ['offers', 'expiryDate', '2030-02-30', 'expiryDate must be a date as YYYY-MM-DD'],
+        ['trackedOffers', 'status', 'used', 'status must be one of Added, Used, Awarded, Expired'],
+        ['trackedOffers', 'status', null, 'status must be one of Added, Used, Awarded, Expired'],
+        ['cards', 'name', '', 'name is required'],
+    ];
+    const paths = { offers: 'offers', trackedOffers: 'tracked-offers', cards: 'cards' };
+
+    it.each(invalid)('rejects an update of %s with a bad %s (%s)', async (key, field, value, problem) => {
+        await seed();
+        const { id } = backup()[key][0];
+        const { body } = await api.put(`/api/${paths[key]}/${id}`).send({ [field]: value }).expect(400);
+
+        expect(body.error).toBe(`${key}[${id}]: ${problem}`);
+    });
+
+    it.each(invalid)('rejects an import of %s with a bad %s (%s) and keeps the data', async (key, field, value, problem) => {
+        await seed();
+        const before = await initialData();
+        const broken = backup();
+        broken[key] = [{ ...broken[key][0], [field]: value }];
+        const { body } = await api.post('/api/import').send(broken).expect(400);
+
+        expect(body.error).toBe(`${key}[${broken[key][0].id}]: ${problem}`);
+        expect(await initialData()).toEqual(before);
+    });
+
+    it('requires last4 of a new card only', async () => {
+        const old = { ...card, last4: '' };
+        await api.post('/api/import').send({ ...backup(), cards: [old] }).expect(200);
+        await api.put('/api/cards/c1').send({ last4: '', notes: 'x' }).expect(200);
+        const { body } = await api.post('/api/cards').send({ ...old, id: 'c2' }).expect(400);
+
+        expect(body.error).toBe('cards[c2]: last4 is required');
+    });
+
+    it('rejects a create with a bad status', async () => {
+        await api.post('/api/import').send({ ...backup(), trackedOffers: [] }).expect(200);
+        await api.post('/api/tracked-offers').send({ ...tracked, status: 'bogus' }).expect(400);
+    });
+
+    it.each(['', null, '2030-01-31', '2030-01-31T23:59:59.000Z', '2028-02-29'])('accepts the offer date %s', async (expiryDate) => {
+        await seed();
+        await api.put('/api/offers/o1').send({ expiryDate }).expect(200);
     });
 });
 
@@ -165,6 +216,24 @@ describe('cascades', () => {
         expect(offers).toHaveLength(1);
     });
 
+    it('leaves a card looking as its deleted type made it', async () => {
+        await seed();
+        await api.put('/api/card-types/t1').send({ issuer: 'Chase', color: '#123456' }).expect(200);
+        await api.delete('/api/card-types/t1').expect(200);
+
+        const { cards } = await initialData();
+        expect(cards[0]).toMatchObject({ issuer: 'Chase', color: '#123456', cardTypeId: null });
+    });
+
+    it('keeps what a deleted card type leaves empty', async () => {
+        await seed();
+        await api.put('/api/card-types/t1').send({ issuer: '' }).expect(200);
+        await api.delete('/api/card-types/t1').expect(200);
+
+        const { cards } = await initialData();
+        expect(cards[0].issuer).toBe(card.issuer);
+    });
+
     it('removes rewards and unlinks cards with their card type', async () => {
         await seed();
         await api.delete('/api/card-types/t1').expect(200);
@@ -194,6 +263,15 @@ describe('import', () => {
             ...backup(),
             cards: [{ ...card, cardHolder: null, notes: null }],
         });
+    });
+
+    it.each([
+        ['a field of the wrong type', { offers: [{ ...offer, terms: {} }] }, 'offers[o1]: terms must be'],
+        ['a column the database refuses', { trackedOffers: [{ ...tracked, dateAdded: null }] }, 'trackedOffers[x1]: NOT NULL'],
+        ['a row without an id', { offers: [offer, { ...offer, id: '' }] }, 'offers[#1]: id is required'],
+    ])('names the row of %s', async (_name, change, expected) => {
+        const { body } = await api.post('/api/import').send({ ...backup(), ...change }).expect(400);
+        expect(body.error).toContain(expected);
     });
 
     it('rejects a payload whose collection is not an array', async () => {

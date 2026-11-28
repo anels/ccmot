@@ -172,7 +172,7 @@ const CardManager: React.FC = () => {
                         )}
                     >
                         <Settings size={13} />
-                        Catalog
+                        Card Types
                     </button>
                 </div>
             </div>
@@ -217,7 +217,7 @@ const CardManager: React.FC = () => {
                                 <div className="space-y-4">
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="col-span-2">
-                                            <label className="block text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">Card Type (Template)</label>
+                                            <label className="block text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">Card Type</label>
                                             <select
                                                 className="w-full h-9 px-3 border border-border rounded-md bg-card text-sm focus:ring-2 focus:ring-ring/40 focus:border-foreground/40 outline-none"
                                                 value={cardTypeId || ''}

@@ -20,6 +20,7 @@ A lightweight Express server managing a SQLite database (`~/.ccmot/database.sqli
 - **Resources**: `cards`, `offers`, `tracked-offers`, `card-types`, `rewards`. Each has `GET /api/<resource>`, `POST /api/<resource>`, `PUT /api/<resource>/:id` (updates only the fields sent) and `DELETE /api/<resource>/:id`, generated from the `RESOURCES` table in `server/app.js`.
 - **Import**: `POST /api/import` replaces all data in one transaction.
 - **Save an offer**: `PUT /api/offers/:id/with-cards` takes `{ offer, cardIds, isNew, seenRowIds }` and saves the offer and the cards tracking it in one transaction. Rows not in `seenRowIds` are never removed, and updating a missing offer is a 404.
+- **Validation**: A new card needs `last4`; older cards may lack it. Creates, updates and imports reject an empty required field, an unknown tracked offer status and an offer date that is not a real date written as `YYYY-MM-DD`, optionally followed by a time (empty is allowed). A rejected import names the row.
 - **Errors**: `{ "error": "..." }` with 400 (validation or constraint failure), 404 (unknown id) or 500.
 - **Logging**: Uses `morgan` for HTTP request logging; request bodies are not logged.
 
@@ -31,7 +32,7 @@ A lightweight Express server managing a SQLite database (`~/.ccmot/database.sqli
     - `status`: 'Added' | 'Used' | 'Awarded' | 'Expired'.
 - **`card_types`**: `id`, `name`, `issuer`, `color`.
 - **`rewards`**: `id`, `cardTypeId`, `category`, `rewardValue`, `rewardUnit`, `description`.
-- Foreign keys are enforced: tracked offers are deleted with their card or offer, rewards with their card type, and a card is unlinked when its card type is deleted.
+- Foreign keys are enforced: tracked offers are deleted with their card or offer, rewards with their card type, and a card is unlinked when its card type is deleted, keeping that type's issuer and color.
 - The schema version is stored in `PRAGMA user_version`. `server/db.js` runs pending migrations on startup and first copies the file to `<db>.v<n>.bak`.
 
 ### 3. Key Components
@@ -59,4 +60,4 @@ A lightweight Express server managing a SQLite database (`~/.ccmot/database.sqli
 - **Persistence**: Replaced `localStorage` with a robust **SQLite Backend**.
 - **Logging**: Added detailed backend logs for better debugging and monitoring.
 - **Concurrency**: `npm run dev:all` runs both client and server simultaneously.
-- **Robustness**: Import logic handles legacy data, though the primary source of truth is now the server.
+- **Robustness**: `lib/backup.ts` upgrades legacy backups on import; the server is the source of truth.

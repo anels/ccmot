@@ -3,19 +3,42 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 
+const STATUSES = ['Added', 'Used', 'Awarded', 'Expired'];
+
+// Empty, or a real calendar date as YYYY-MM-DD, optionally followed by a time.
+function isOfferDate(value) {
+    if (value === null || value === '') return true;
+    const match = typeof value === 'string' && /^(\d{4})-(\d{2})-(\d{2})(T.*)?$/.exec(value);
+    if (!match) return false;
+    const [year, month, day] = match.slice(1, 4).map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
 // Listed parents first: import inserts in this order and clears in reverse.
 // `key` is the resource's name in /api/initial-data and /api/import payloads.
 // `parents` maps a foreign key field to the resource it points at.
+// A `required` field may not be empty, and `checks` limits what a field holds;
+// both apply to creates, updates and imports. A `requiredOnCreate` field may be
+// empty in rows already stored, so their updates and imports accept that.
+// `beforeDelete` is run with the id, in the same transaction as the delete.
 const RESOURCES = [
     {
         key: 'cardTypes', path: 'card-types', table: 'card_types',
         columns: ['name', 'issuer', 'color'],
         required: ['name', 'color'],
+        // Cards keep the look their type gave them once it is gone.
+        beforeDelete: `
+            UPDATE cards SET issuer = COALESCE(NULLIF(type.issuer, ''), cards.issuer),
+                             color = COALESCE(NULLIF(type.color, ''), cards.color)
+            FROM card_types AS type
+            WHERE type.id = ? AND cards.cardTypeId = type.id`,
     },
     {
         key: 'cards', path: 'cards', table: 'cards',
         columns: ['name', 'issuer', 'last4', 'color', 'cardHolder', 'notes', 'cardTypeId'],
-        required: ['name', 'issuer', 'last4', 'color'],
+        required: ['name', 'issuer', 'color'],
+        requiredOnCreate: ['last4'], // older cards were saved without it
         parents: { cardTypeId: 'cardTypes' },
         nullable: ['cardTypeId'],
     },
@@ -23,12 +46,16 @@ const RESOURCES = [
         key: 'offers', path: 'offers', table: 'offers',
         columns: ['merchantName', 'description', 'terms', 'category', 'expiryDate', 'url'],
         required: ['merchantName', 'description'],
+        checks: { expiryDate: { test: isOfferDate, expected: 'must be a date as YYYY-MM-DD' } },
     },
     {
         key: 'trackedOffers', path: 'tracked-offers', table: 'tracked_offers',
         columns: ['offerId', 'cardId', 'status', 'dateAdded'],
         required: ['offerId', 'cardId'],
         parents: { offerId: 'offers', cardId: 'cards' },
+        checks: {
+            status: { test: value => STATUSES.includes(value), expected: `must be one of ${STATUSES.join(', ')}` },
+        },
     },
     {
         key: 'rewards', path: 'rewards', table: 'rewards',
@@ -48,23 +75,43 @@ class HttpError extends Error {
 
 const isScalar = (value) => value === null || typeof value === 'string' || typeof value === 'number';
 
+const isConstraint = (err) => typeof err.code === 'string' && err.code.startsWith('SQLITE_CONSTRAINT');
+
 // Named parameters for `fields` of `resource`, taken from an untrusted object.
-function toParams(resource, source, fields) {
+// `index` is the row's position in an import, to name a row that has no id.
+function toParams(resource, source, fields, index) {
+    const unnamed = index === undefined ? resource.key : `${resource.key}[#${index}]`;
     if (source === null || typeof source !== 'object' || Array.isArray(source)) {
-        throw new HttpError(400, `${resource.key}: expected an object`);
+        throw new HttpError(400, `${unnamed}: expected an object`);
     }
     if (typeof source.id !== 'string' || !source.id) {
-        throw new HttpError(400, `${resource.key}: id is required`);
+        throw new HttpError(400, `${unnamed}: id is required`);
     }
     const params = { id: source.id };
     for (const field of fields) {
         const value = source[field] ?? null;
         if (!isScalar(value)) {
-            throw new HttpError(400, `${resource.key}: ${field} must be a string, a number or null`);
+            throw new HttpError(400, `${resource.key}[${source.id}]: ${field} must be a string, a number or null`);
         }
         params[field] = value;
     }
     return params;
+}
+
+// Rejects `fields` of `params` that the resource does not allow, naming the row.
+function validate({ key, required, checks = {} }, params, fields) {
+    for (const field of fields) {
+        const value = params[field];
+        let problem;
+        if (required.includes(field) && (value === null || value === '')) {
+            problem = 'is required';
+        } else if (checks[field] && !checks[field].test(value)) {
+            problem = checks[field].expected;
+        }
+        if (problem) {
+            throw new HttpError(400, `${key}[${params.id}]: ${field} ${problem}`);
+        }
+    }
 }
 
 function createApp(db, { allowedOrigins, logRequests = true } = {}) {
@@ -88,15 +135,16 @@ function createApp(db, { allowedOrigins, logRequests = true } = {}) {
     // Inserts a new row from an untrusted object and returns what was stored.
     function create(resource, source) {
         const params = toParams(resource, source, resource.columns);
-        if (resource.required.some(field => !params[field])) {
-            throw new HttpError(400, 'Missing required fields');
-        }
+        const { required, requiredOnCreate = [] } = resource;
+        validate({ ...resource, required: [...required, ...requiredOnCreate] }, params, resource.columns);
         insert[resource.table].run(params);
         return params;
     }
 
     // Writes `fields` of an existing row and returns how many rows changed.
-    function update({ table }, params, fields) {
+    function update(resource, params, fields) {
+        validate(resource, params, fields);
+        const { table } = resource;
         return db
             .prepare(`UPDATE ${table} SET ${fields.map(field => `${field} = @${field}`).join(', ')} WHERE id = @id`)
             .run(params)
@@ -128,12 +176,19 @@ function createApp(db, { allowedOrigins, logRequests = true } = {}) {
             res.json({ changes });
         });
 
+        const beforeDelete = resource.beforeDelete && db.prepare(resource.beforeDelete);
+        const deleteById = db.prepare(`DELETE FROM ${table} WHERE id = ?`);
+        const remove = db.transaction((id) => {
+            beforeDelete?.run(id);
+            return deleteById.run(id).changes;
+        });
+
         app.delete(`/api/${path}/:id`, (req, res) => {
-            const result = db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(req.params.id);
-            if (result.changes === 0) {
+            const changes = remove(req.params.id);
+            if (changes === 0) {
                 throw new HttpError(404, `${path} ${req.params.id} not found`);
             }
-            res.json({ changes: result.changes });
+            res.json({ changes });
         });
     }
 
@@ -207,8 +262,8 @@ function createApp(db, { allowedOrigins, logRequests = true } = {}) {
         for (const resource of RESOURCES) {
             const { key, parents = {}, nullable = [] } = resource;
             ids[key] = new Set();
-            for (const row of data[key]) {
-                const params = toParams(resource, row, resource.columns);
+            for (const [index, row] of data[key].entries()) {
+                const params = toParams(resource, row, resource.columns, index);
                 const dangling = Object.keys(parents).filter(field => !ids[parents[field]].has(params[field]));
                 if (dangling.some(field => !nullable.includes(field))) continue;
                 for (const field of dangling) params[field] = null;
@@ -217,7 +272,14 @@ function createApp(db, { allowedOrigins, logRequests = true } = {}) {
                     if (trackedPairs.has(pair)) continue;
                     trackedPairs.add(pair);
                 }
-                insert[resource.table].run(params);
+                validate(resource, params, resource.columns);
+                try {
+                    insert[resource.table].run(params);
+                } catch (err) {
+                    // The database names the column it refused, but not the row
+                    if (!isConstraint(err)) throw err;
+                    throw new HttpError(400, `${key}[${params.id}]: ${err.message}`);
+                }
                 ids[key].add(params.id);
             }
         }
@@ -239,8 +301,7 @@ function createApp(db, { allowedOrigins, logRequests = true } = {}) {
 
     // Express identifies an error handler by its four parameters.
     app.use((err, req, res, _next) => {
-        const isConstraint = typeof err.code === 'string' && err.code.startsWith('SQLITE_CONSTRAINT');
-        const status = err.status || (isConstraint ? 400 : 500);
+        const status = err.status || (isConstraint(err) ? 400 : 500);
         if (status >= 500) console.error(err);
         res.status(status).json({ error: err.message });
     });

@@ -8,7 +8,7 @@ import { TrackedOfferCard } from './TrackedOfferCard';
 import { CatalogOfferCard } from './CatalogOfferCard';
 import { getCategoryColor } from '../lib/constants';
 import { CategoryIcon } from './CategoryIcon';
-import { cn } from '../lib/utils';
+import { cn, formatReward } from '../lib/utils';
 import { buildDashboardView, buildOffersExport } from '../lib/dashboard';
 import { saveJson } from '../lib/save-file';
 
@@ -200,6 +200,8 @@ const Dashboard: React.FC = () => {
             <div className="space-y-10">
                 {view.sections.map(({ category, rewards: relevantRewards, active: activeOffers }) => {
                     const catColor = getCategoryColor(category);
+                    // A card type can have several rewards in one category
+                    const earningTypes = new Set(relevantRewards.map(reward => reward.cardTypeId)).size;
                     return (
                         <section key={category} className="animate-slide-up scroll-mt-32" id={category}>
                             {/* Category header */}
@@ -218,7 +220,7 @@ const Dashboard: React.FC = () => {
                                     {relevantRewards.length > 0 && (
                                         <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                                             <Trophy className="w-3 h-3" />
-                                            <span>{relevantRewards.length} {relevantRewards.length === 1 ? 'card' : 'cards'} earn here</span>
+                                            <span>{earningTypes} {earningTypes === 1 ? 'card type earns' : 'card types earn'} here</span>
                                         </div>
                                     )}
                                 </div>
@@ -238,7 +240,7 @@ const Dashboard: React.FC = () => {
                                                             ? "bg-gain text-gain-foreground"
                                                             : "bg-muted text-foreground"
                                                     )}>
-                                                        {reward.rewardValue}{reward.rewardUnit === '%' ? '%' : 'x'}
+                                                        {formatReward(reward.rewardValue, reward.rewardUnit)}
                                                     </div>
                                                     <div className="min-w-0 flex-1">
                                                         <div className="text-xs font-medium truncate" title={reward.cardType.name}>

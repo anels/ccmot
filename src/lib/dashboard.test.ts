@@ -111,6 +111,14 @@ describe('buildDashboardView', () => {
 });
 
 describe('buildOffersExport', () => {
+    it('writes each reward as it is shown', () => {
+        const result = buildOffersExport(data({
+            rewards: [{ id: 'r1', cardTypeId: 't1', category: 'Travel', rewardValue: 3, rewardUnit: 'points', description: '' }],
+        }), today);
+
+        expect(result.best_cards[0].reward).toBe('3 pts');
+    });
+
     it('exports only the offers still waiting to be used', () => {
         const result = buildOffersExport(data({
             offers: [offer('live'), offer('past', { expiryDate: '2030-01-30' }), offer('used')],

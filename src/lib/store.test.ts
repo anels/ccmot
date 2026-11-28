@@ -146,7 +146,7 @@ describe('a write the server accepts', () => {
 
         expect(data().cardTypes).toEqual([]);
         expect(data().rewards).toEqual([]);
-        expect(data().cards[0].cardTypeId).toBeUndefined();
+        expect(data().cards[0]).toEqual({ ...card, color: '#B8860B', cardTypeId: undefined });
     });
 });
 

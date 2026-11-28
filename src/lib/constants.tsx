@@ -1,4 +1,4 @@
-import type { CardIssuer, OfferCategory, OfferStatus } from '../types';
+import type { CardIssuer, OfferCategory, OfferStatus, Reward } from '../types';
 import { Plane, Utensils, ShoppingBag, Clapperboard, Briefcase, HelpCircle } from 'lucide-react';
 
 export const ISSUERS: CardIssuer[] = ['Amex', 'Chase', 'Citi', 'Bank of America', 'US Bank', 'Other'];
@@ -11,6 +11,14 @@ export const ISSUER_COLORS: Record<CardIssuer, string> = {
     'US Bank': '#DA291C',     // Red
     'Other': '#374151',
 };
+
+export const DEFAULT_CARD_TYPE_COLOR = '#374151';
+
+export const REWARD_UNITS: { value: Reward['rewardUnit']; label: string }[] = [
+    { value: '%', label: '%' },
+    { value: 'x', label: 'x' },
+    { value: 'points', label: 'pts' },
+];
 
 export const CATEGORIES: OfferCategory[] = [
     'Travel',

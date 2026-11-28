@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
 import { useStore, type WriteResult } from '../lib/store';
 import { useSubmit } from '../hooks/useSubmit';
-import { CATEGORIES } from '../lib/constants';
+import { CATEGORIES, REWARD_UNITS } from '../lib/constants';
+import { listCategories } from '../lib/categories';
+import { formatReward } from '../lib/utils';
 import { Trash2, Plus, ChevronDown, ChevronRight, Edit2 } from 'lucide-react';
 import type { CardIssuer, CardType, Reward } from '../types';
 import { CardTypeModal } from './CardTypeModal';
 import { ConfirmDialog } from './ConfirmDialog';
+
+// The select's value for typing a new category
+const NEW_CATEGORY = '__new__';
 
 type RewardDraft = {
     cardTypeId: string;
@@ -16,12 +21,14 @@ type RewardDraft = {
 };
 
 export const RewardConfig: React.FC = () => {
-    const { cardTypes, rewards, addCardType, updateCardType, deleteCardType, addReward, deleteReward } = useStore();
+    const { cardTypes, rewards, offers, addCardType, updateCardType, deleteCardType, addReward, deleteReward } = useStore();
     const [expandedCardType, setExpandedCardType] = useState<string | null>(null);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingType, setEditingType] = useState<CardType | undefined>(undefined);
     const [deleteTypeId, setDeleteTypeId] = useState<string | null>(null);
+
+    const categories = listCategories(offers, rewards);
 
     const handleCreate = () => {
         setEditingType(undefined);
@@ -40,7 +47,7 @@ export const RewardConfig: React.FC = () => {
         <div className="space-y-5 animate-in fade-in duration-200">
             <div className="flex items-center justify-between gap-4">
                 <div>
-                    <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">Catalog</p>
+                    <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">Wallet</p>
                     <h2 className="text-xl font-semibold tracking-tight mt-0.5">Card Types & Rewards</h2>
                 </div>
                 <button
@@ -64,7 +71,7 @@ export const RewardConfig: React.FC = () => {
                 onClose={() => setDeleteTypeId(null)}
                 onConfirm={() => { if (deleteTypeId) deleteCardType(deleteTypeId); }}
                 title="Delete Card Type"
-                message="Delete this card type? Its reward rules will be deleted and cards using it will be unlinked."
+                message="Delete this card type? Its rewards will be deleted. Cards using it keep their issuer and color."
             />
 
             <div className="space-y-2">
@@ -80,6 +87,7 @@ export const RewardConfig: React.FC = () => {
                     <CardTypeRow
                         key={cardType.id}
                         cardType={cardType}
+                        categories={categories}
                         rewards={rewards.filter(r => r.cardTypeId === cardType.id)}
                         isExpanded={expandedCardType === cardType.id}
                         toggleExpand={() => setExpandedCardType(expandedCardType === cardType.id ? null : cardType.id)}
@@ -96,6 +104,7 @@ export const RewardConfig: React.FC = () => {
 
 const CardTypeRow: React.FC<{
     cardType: CardType;
+    categories: string[];
     rewards: Reward[];
     isExpanded: boolean;
     toggleExpand: () => void;
@@ -103,21 +112,24 @@ const CardTypeRow: React.FC<{
     onDelete: () => void;
     onAddReward: (r: RewardDraft) => Promise<WriteResult>;
     onDeleteReward: (id: string) => Promise<WriteResult>;
-}> = ({ cardType, rewards, isExpanded, toggleExpand, onEdit, onDelete, onAddReward, onDeleteReward }) => {
-    const [category, setCategory] = useState(CATEGORIES[0]);
+}> = ({ cardType, categories, rewards, isExpanded, toggleExpand, onEdit, onDelete, onAddReward, onDeleteReward }) => {
+    const [category, setCategory] = useState<string>(CATEGORIES[0]);
+    // A custom category goes away with its last offer or reward
+    const selectedCategory = categories.includes(category) ? category : CATEGORIES[0];
+    const [unit, setUnit] = useState<Reward['rewardUnit']>('%');
     const [isCustomCategory, setIsCustomCategory] = useState(false);
     const [customCategory, setCustomCategory] = useState('');
     const [value, setValue] = useState('');
     const [description, setDescription] = useState('');
     const [isSaving, submit] = useSubmit();
-    // A rule stays listed until the server accepts its delete, so block a second click
+    // A reward stays listed until the server accepts its delete, so block a second click
     const [isDeleting, submitDelete] = useSubmit();
 
     const handleAddReward = (e: React.FormEvent) => {
         e.preventDefault();
         if (!value) return;
 
-        const finalCategory = isCustomCategory ? customCategory : category;
+        const finalCategory = isCustomCategory ? customCategory.trim() : selectedCategory;
         if (!finalCategory) return;
 
         submit(async () => {
@@ -125,7 +137,7 @@ const CardTypeRow: React.FC<{
                 cardTypeId: cardType.id,
                 category: finalCategory,
                 rewardValue: parseFloat(value),
-                rewardUnit: '%',
+                rewardUnit: unit,
                 description
             });
             if (!result.ok) return;
@@ -151,7 +163,7 @@ const CardTypeRow: React.FC<{
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                     <span className="text-[11px] font-mono tabular-nums text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                        {rewards.length} {rewards.length === 1 ? 'rule' : 'rules'}
+                        {rewards.length} {rewards.length === 1 ? 'reward' : 'rewards'}
                     </span>
                     <button
                         onClick={(e) => { e.stopPropagation(); onEdit(); }}
@@ -178,15 +190,15 @@ const CardTypeRow: React.FC<{
                             <div className="flex gap-1.5">
                                 {!isCustomCategory ? (
                                     <select
-                                        value={category}
+                                        value={selectedCategory}
                                         onChange={(e) => {
-                                            if (e.target.value === 'Custom') setIsCustomCategory(true);
-                                            else setCategory(e.target.value as typeof CATEGORIES[number]);
+                                            if (e.target.value === NEW_CATEGORY) setIsCustomCategory(true);
+                                            else setCategory(e.target.value);
                                         }}
                                         className="h-8 px-2 rounded-md border border-border text-xs bg-card focus:ring-2 focus:ring-ring/40 focus:border-foreground/40 outline-none"
                                     >
-                                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                                        <option value="Custom">Custom…</option>
+                                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                                        <option value={NEW_CATEGORY}>Custom…</option>
                                     </select>
                                 ) : (
                                     <div className="flex items-center gap-1.5">
@@ -210,7 +222,7 @@ const CardTypeRow: React.FC<{
                             </div>
                         </div>
                         <div className="w-20">
-                            <label className="block text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Value %</label>
+                            <label className="block text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Value</label>
                             <input
                                 type="number"
                                 step="0.1"
@@ -219,6 +231,17 @@ const CardTypeRow: React.FC<{
                                 placeholder="5"
                                 className="w-full h-8 px-2 rounded-md border border-border text-xs bg-card font-mono tabular-nums focus:ring-2 focus:ring-ring/40 focus:border-foreground/40 outline-none"
                             />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Unit</label>
+                            <select
+                                aria-label="Unit"
+                                value={unit}
+                                onChange={(e) => setUnit(e.target.value as Reward['rewardUnit'])}
+                                className="h-8 px-2 rounded-md border border-border text-xs bg-card focus:ring-2 focus:ring-ring/40 focus:border-foreground/40 outline-none"
+                            >
+                                {REWARD_UNITS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+                            </select>
                         </div>
                         <div className="flex-1 min-w-[180px]">
                             <label className="block text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Note</label>
@@ -231,7 +254,7 @@ const CardTypeRow: React.FC<{
                             />
                         </div>
                         <button type="submit" disabled={isSaving} className="h-8 px-3 bg-foreground hover:bg-foreground/85 text-background rounded-md text-[11px] font-medium uppercase tracking-wider transition-colors disabled:opacity-30">
-                            Add Rule
+                            Add Reward
                         </button>
                     </form>
 
@@ -241,7 +264,7 @@ const CardTypeRow: React.FC<{
                             <div key={reward.id} className="flex items-center justify-between bg-card px-3 py-1.5 rounded-md border border-border">
                                 <div className="flex items-center gap-3 min-w-0">
                                     <span className="font-mono tabular-nums font-semibold text-gain bg-gain-soft px-1.5 py-0.5 rounded-sm text-xs min-w-[44px] text-center">
-                                        {reward.rewardValue}%
+                                        {formatReward(reward.rewardValue, reward.rewardUnit)}
                                     </span>
                                     <span className="text-xs font-medium truncate">
                                         {reward.category}

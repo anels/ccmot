@@ -12,6 +12,7 @@ A personal finance dashboard to track credit card offers, rewards, and expiratio
 
 ### 💳 Card Management
 - **Add/Edit Cards**: Store your credit cards with custom colors and optional notes.
+- **Card Types & Rewards**: Record what each card type earns per category, in percent, multiplier or points.
 - **Smart Fields**: Optional "Card Holder" and "Notes" fields.
 - **Search**: Dedicated search bar for your card inventory (hides automatically during data entry).
 

@@ -2,6 +2,7 @@ import type { AppData, CardType, CreditCard, Offer, Reward, TrackedOffer } from 
 import { listCategories } from './categories';
 import { getTrackedOfferState, type TrackedOfferState } from './lifecycle';
 import { matchesTerm, OFFER_SEARCH_FIELDS } from './search';
+import { formatReward } from './utils';
 
 export type TrackedItem = TrackedOffer & { offer: Offer; card: CreditCard; state: TrackedOfferState };
 
@@ -125,7 +126,7 @@ export function buildOffersExport(data: AppData, today = new Date()) {
             const type = typesById.get(reward.cardTypeId);
             return {
                 category: reward.category,
-                reward: `${reward.rewardValue}${reward.rewardUnit}`,
+                reward: formatReward(reward.rewardValue, reward.rewardUnit),
                 description: reward.description,
                 card_product: type ? `${type.name} (${type.issuer})` : 'Unknown Card',
             };

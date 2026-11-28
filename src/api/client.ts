@@ -11,6 +11,32 @@ async function fetchJson<T>(endpoint: string, options?: RequestInit): Promise<T>
     return response.json();
 }
 
+// SQLite answers null for what a row leaves out; the app's types use an absent
+// field, or an empty string for the text fields every row has.
+function decode<T>(row: T, empty: Partial<T>): T {
+    const present = Object.entries(row as object).filter(([, value]) => value !== null);
+    return { ...empty, ...Object.fromEntries(present) } as T;
+}
+
+const decodeCard = (row: CreditCard) => decode(row, { cardHolder: '', notes: '' });
+// The database allows an empty category and unit. An offer without a category
+// would be in no dashboard section, and a reward without a unit reads as percent.
+const decodeOffer = (row: Offer): Offer => {
+    const offer = decode(row, { terms: '', expiryDate: '' });
+    return { ...offer, category: offer.category || 'Shopping' };
+};
+const decodeReward = (row: Reward): Reward => {
+    const reward = decode(row, { description: '' });
+    return { ...reward, rewardUnit: reward.rewardUnit || '%' };
+};
+
+const decodeAppData = (data: AppData): AppData => ({
+    ...data,
+    cards: data.cards.map(decodeCard),
+    offers: data.offers.map(decodeOffer),
+    rewards: data.rewards.map(decodeReward),
+});
+
 const jsonRequest = (method: 'POST' | 'PUT', body: unknown): RequestInit => ({
     method,
     headers: { 'Content-Type': 'application/json' },
@@ -28,7 +54,7 @@ export type SaveOfferCards = {
 
 export const api = {
     // Initial Data
-    getInitialData: () => fetchJson<AppData>('/initial-data'),
+    getInitialData: () => fetchJson<AppData>('/initial-data').then(decodeAppData),
 
     // Import
     importData: (data: AppData) => fetchJson('/import', jsonRequest('POST', data)),
@@ -45,7 +71,7 @@ export const api = {
     // The offer and the cards that track it, saved together.
     saveOffer: (offer: Offer, cards: SaveOfferCards) => fetchJson<{ data: { offer: Offer; trackedOffers: TrackedOffer[] } }>(
         `/offers/${offer.id}/with-cards`, jsonRequest('PUT', { offer, ...cards })
-    ),
+    ).then(({ data }) => ({ data: { ...data, offer: decodeOffer(data.offer) } })),
     deleteOffer: (id: string) => fetchJson(`/offers/${id}`, deleteRequest),
 
     // Tracked Offers

@@ -15,7 +15,7 @@ All the Offers on record, whether tracked or not.
 A credit card the person holds.
 
 **Card Type**:
-A kind of credit card, such as a particular issuer's product, that sets the issuer and color of its Cards and carries their Rewards. If its Card Type is deleted, a Card falls back to the issuer and color last saved on the Card itself.
+A kind of credit card, such as a particular issuer's product, that sets the issuer and color of its Cards and carries their Rewards. A Card keeps that appearance if its Card Type is deleted.
 _Avoid_: Template, card product, catalog
 
 **Reward**:
